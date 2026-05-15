@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/card";
 import { GraduationCap, Mail, Lock, ArrowRight, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { getRedirectPath } from "@/lib/auth";
+import { getToken, parseToken, getRedirectPath } from "@/lib/auth";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -34,8 +34,6 @@ export default function LoginPage() {
 
     const result = await login(email, password);
     if (result.success) {
-      // Re-read user from token to get role for redirect
-      const { parseToken, getToken } = await import("@/lib/auth");
       const user = parseToken(getToken()!);
       router.push(user ? getRedirectPath(user.role) : "/student/dashboard");
     } else {
@@ -57,19 +55,6 @@ export default function LoginPage() {
             </div>
             <span className="text-2xl font-bold tracking-tight">Project Hub</span>
           </Link>
-
-          {/* Admin Quick Login for Demo/Test */}
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full rounded-full h-10 mb-2 text-sm font-semibold"
-            onClick={() => {
-              setEmail('admin@university.edu');
-              setPassword('admin123');
-            }}
-          >
-            Admin Quick Login
-          </Button>
 
           {/* Login Card */}
           <Card className="border-none shadow-2xl shadow-primary/5 bg-card/50 backdrop-blur-sm">

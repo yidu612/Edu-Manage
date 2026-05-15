@@ -105,9 +105,11 @@ export const signUp = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("signUp error:", error.message);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
+      ...(process.env.NODE_ENV !== "production" && { detail: error.message }),
     });
   }
 };
@@ -159,10 +161,11 @@ export const login = async (req, res) => {
       },
     });
   } catch (error) {
-    console.log(`Error in login controller: ${error}`);
+    console.error("login error:", error.message);
     return res.status(500).json({
       success: false,
       message: "Internal Server Error",
+      ...(process.env.NODE_ENV !== "production" && { detail: error.message }),
     });
   }
 };

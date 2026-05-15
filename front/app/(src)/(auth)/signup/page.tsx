@@ -30,7 +30,8 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useToast } from '@/app/(src)/hooks/use-toast';
-import { registerUser } from '@/lib/auth';
+import api from '@/lib/api';
+import { saveToken, getRedirectPath, parseToken } from '@/lib/auth';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -71,21 +72,29 @@ export default function SignupPage() {
 
     setIsLoading(true);
 
-    const result = registerUser({
-      name: formData.name,
-      email: formData.email,
-      password: formData.password,
-      role: formData.role,
-    });
+    try {
+      const res = await api.post('/auth/signup', {
+        fullName: formData.name,
+        email: formData.email,
+        password: formData.password,
+        role: formData.role,
+        department: formData.department,
+      });
 
-    if (!result.success) {
-      toast({ variant: 'destructive', title: 'Sign up failed', description: result.message });
+      const { accessToken } = res.data.data;
+      saveToken(accessToken);
+
+      toast({ title: 'Account created!', description: 'Welcome to EduManage.' });
+
+      const user = parseToken(accessToken);
+      router.push(user ? getRedirectPath(user.role) : '/student/dashboard');
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ?? 'Sign up failed. Please try again.';
+      toast({ variant: 'destructive', title: 'Sign up failed', description: message });
       setIsLoading(false);
-      return;
     }
-
-    toast({ title: 'Account created!', description: 'Please sign in with your new account.' });
-    router.push('/login');
   };
 
   return (

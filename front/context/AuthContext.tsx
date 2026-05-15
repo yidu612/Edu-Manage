@@ -1,12 +1,17 @@
 "use client";
 
-import { createContext, useContext, useEffect, useCallback, useState, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useCallback,
+  useState,
+  ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
+import api from "@/lib/api";
 import {
   AuthUser,
-  HARDCODED_USERS,
-  getRegisteredUsers,
-  createToken,
   saveToken,
   getToken,
   parseToken,
@@ -40,13 +45,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return refreshed;
   }, []);
 
+  // Hydrate user from stored token on mount
   useEffect(() => {
-    const refreshed = validateAndRefreshToken();
-    setUser(refreshed);
+    const user = validateAndRefreshToken();
+    setUser(user);
     setIsLoading(false);
   }, []);
 
-  // Re-validate session when tab regains focus
+  // Re-validate when tab regains focus
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") reauthenticate();
@@ -56,17 +62,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [reauthenticate]);
 
   const login = async (email: string, password: string) => {
-    const allUsers = [...HARDCODED_USERS, ...getRegisteredUsers()];
-    const found = allUsers.find(
-      (u) => u.email === email && u.password === password
-    );
-    if (!found) return { success: false, message: "Invalid email or password." };
+    try {
+      const res = await api.post("/auth/login", { email, password });
+      const { accessToken, user: userData } = res.data.data;
 
-    const { password: _, ...authUser } = found;
-    const token = createToken(authUser);
-    saveToken(token);
-    setUser(authUser);
-    return { success: true, message: "Welcome back!" };
+      saveToken(accessToken);
+
+      // Build AuthUser from the response body (already normalized by interceptor)
+      const authUser: AuthUser = {
+        id: userData.id,
+        name: userData.name,
+        email: userData.email,
+        role: userData.role,
+        imageUrl: userData.imageUrl,
+      };
+      setUser(authUser);
+
+      return { success: true, message: "Welcome back!" };
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ?? "Invalid email or password.";
+      return { success: false, message };
+    }
   };
 
   const logout = () => {
