@@ -1,384 +1,160 @@
 import Project from '../models/Project.js';
-import multer from 'multer';
-import { v2 as cloudinary } from 'cloudinary';
+import Milestone from '../models/Milestone.js';
+import { notify } from '../utils/notify.js';
 import mongoose from 'mongoose';
 
-// Configure Multer for memory storage
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
+// ─── Projects ─────────────────────────────────────────────────────────────────
 
-// Middleware to handle multiple file uploads for project creation/update
-export const uploadProjectFiles = upload.fields([
-  { name: 'coverImage', maxCount: 1 },
-  { name: 'toolImages', maxCount: 20 },
-  { name: 'appLogos', maxCount: 20 },
-  { name: 'documentationFiles', maxCount: 1 }
-]);
-
-// Helper function to upload files to Cloudinary
-const uploadToCloudinary = async (file, options = {}) => {
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(options, (error, result) => {
-      if (error) {
-        return reject(error);
-      }
-      resolve(result);
-    }).end(file.buffer);
-  });
-};
-
-// Get all projects
 export const getProjects = async (req, res) => {
   try {
-    const projects = await Project.find();
-    res.json({ success: true, data: projects });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    const filter = {};
+    if (req.user.role === 'student') filter.studentId = req.user._id;
+    else if (req.user.role === 'teacher') filter.mentorId = req.user._id;
+
+    const projects = await Project.find(filter)
+      .populate('studentId', 'fullName email department')
+      .populate('mentorId',  'fullName email')
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, count: projects.length, data: projects });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// Get single project
 export const getProject = async (req, res) => {
   try {
-    const project = await Project.findById(req.params.id);
-    if (!project) {
-      return res.status(404).json({ success: false, message: 'Project not found' });
-    }
+    const project = await Project.findById(req.params.id)
+      .populate('studentId', 'fullName email department')
+      .populate('mentorId',  'fullName email')
+      .populate('repositoryId');
+
+    if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
+
     res.json({ success: true, data: project });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// Helper function to safely parse JSON
-const safeParseJSON = (data) => {
-  if (typeof data === 'string') {
-    try {
-      return JSON.parse(data);
-    } catch (e) {
-      console.error('JSON parse error:', e);
-      return data;
-    }
-  }
-  return data;
-};
-
-// Create project
 export const createProject = async (req, res) => {
   try {
-    const { 
-      title, 
-      elevatorPitch, 
-      toolsAndMachines, 
-      appsAndPlatforms, 
-      projectDescription, 
-      codeAndDocumentation,
-      noToolsUsed,
-      reviewedByTeacherId 
-    } = req.body;
-    const files = req.files;
+    const { title, objectives, abstract, mentorId } = req.body;
+    if (!title) return res.status(400).json({ success: false, message: 'Title is required' });
 
-    // Validate reviewedByTeacherId if provided
-    if (reviewedByTeacherId && !mongoose.Types.ObjectId.isValid(reviewedByTeacherId)) {
-      return res.status(400).json({ message: 'Invalid reviewedByTeacherId format' });
-    }
-
-    // Arrays to hold all Cloudinary upload promises
-    const uploadPromises = [];
-
-    // Parse JSON strings from form-data
-    const parsedTeamMembers = safeParseJSON(req.body.teamMembers);
-    const parsedToolsAndMachines = safeParseJSON(req.body.toolsAndMachines);
-    const parsedAppsAndPlatforms = safeParseJSON(req.body.appsAndPlatforms);
-    const parsedCodeAndDocumentation = safeParseJSON(req.body.codeAndDocumentation);
-    const parsedTags = safeParseJSON(req.body.tags);
-
-    // Process team/collaborators
-    let processedCollaborators = [];
-    if (parsedTeamMembers) {
-      try {
-        // Handle both string and array formats
-        const teamMembersArray = Array.isArray(parsedTeamMembers) ? parsedTeamMembers : JSON.parse(parsedTeamMembers);
-        if (Array.isArray(teamMembersArray)) {
-          processedCollaborators = teamMembersArray.map((member) => {
-            if (!member.id) {
-              throw new Error('Team member ID is required');
-            }
-            return {
-              id: member.id,
-              name: member.name,
-              role: member.role
-            };
-          });
-        }
-      } catch (error) {
-        console.error('Error parsing team members:', error);
-        throw new Error('Invalid team members format');
-      }
-    }
-
-    // Process app logos
-    let processedApps = parsedAppsAndPlatforms || [];
-    if (Array.isArray(processedApps)) {
-      processedApps = processedApps.map((app, index) => {
-        const appLogoFile = files && files.appLogos && files.appLogos[index];
-        if (appLogoFile) {
-          const uploadPromise = uploadToCloudinary(appLogoFile, { folder: 'project_apps' }).then(result => {
-            app.logo = result.secure_url;
-          }).catch(error => {
-            console.error('Cloudinary upload error for app logo:', error);
-            app.logo = null;
-            console.error('Cloudinary upload error for app logo:', error);
-            app.logo = null;
-          });
-          uploadPromises.push(uploadPromise);
-        }
-        return app;
-        return app;
-      });
-    }
-
-    // Process tool images when noToolsUsed is false
-    let processedTools = [];
-    if (!noToolsUsed) {
-      const toolsData = parsedToolsAndMachines || { noToolsUsed: false, tools: [] };
-      if (Array.isArray(toolsData.tools)) {
-        processedTools = toolsData.tools.map((tool, index) => {
-          const toolImageFile = files && files.toolImages && files.toolImages[index];
-          if (toolImageFile) {
-            const uploadPromise = uploadToCloudinary(toolImageFile, { folder: 'project_tools' }).then(result => {
-              tool.image = result.secure_url;
-            }).catch(error => {
-              console.error('Cloudinary upload error for tool image:', error);
-              tool.image = null;
-            });
-            uploadPromises.push(uploadPromise);
-          }
-          return tool;
-        });
-      }
-    }
-
-    // Process documentation files
-    let processedDocumentation = [];
-    if (files && files.documentationFiles && files.documentationFiles.length > 0) {
-      processedDocumentation = await Promise.all(
-        files.documentationFiles.map(async (docFile) => {
-          try {
-            const result = await uploadToCloudinary(docFile, { folder: 'project_documentation', resource_type: 'raw' });
-            return {
-              fileName: docFile.originalname,
-              fileSize: result.bytes,
-              fileUrl: result.secure_url
-            };
-          } catch (error) {
-            console.error('Cloudinary upload error for documentation file:', error);
-            return null;
-          }
-        })
-      );
-    }
-
-    // Get the documentation from codeAndDocumentation if it exists
-    const existingDocumentation = parsedCodeAndDocumentation?.documentation || {};
-
-    // Prepare codeAndDocumentation object
-    const finalCodeAndDocumentation = {
-      ...parsedCodeAndDocumentation,
-      documentation: processedDocumentation.length > 0 ? processedDocumentation[0] : existingDocumentation
-    };
-
-    // Wait for ALL Cloudinary uploads to complete
-    await Promise.all(uploadPromises);
-
-    // Upload cover image (this was already awaited correctly)
-    let coverImage = undefined;
-    if (files && files.coverImage && files.coverImage[0]) {
-      const result = await uploadToCloudinary(files.coverImage[0], { folder: 'project_covers' });
-      coverImage = result.secure_url;
+    if (mentorId && !mongoose.Types.ObjectId.isValid(mentorId)) {
+      return res.status(400).json({ success: false, message: 'Invalid mentorId' });
     }
 
     const project = new Project({
-      // Required fields
       title,
-      elevatorPitch,
-      
-      // Optional fields with defaults
-      tags: parsedTags || [],
-      coverImage,
-      projectDescription,
-      
-      // Team and collaboration
-      teamMembers: processedCollaborators,
-      
-      // Tools and machines
-      toolsAndMachines: noToolsUsed 
-        ? { noToolsUsed: true, tools: [] } 
-        : { noToolsUsed: false, tools: processedTools },
-      
-      // Apps and platforms
-      appsAndPlatforms: processedApps,
-      projectDescription,
-      codeAndDocumentation: finalCodeAndDocumentation,
-      noToolsUsed,
-      reviewedByTeacherId: reviewedByTeacherId
+      studentId: req.user._id,
+      mentorId:  mentorId || undefined,
+      objectives,
+      abstract,
+      status: 'draft',
     });
 
-    const savedProject = await project.save();
-    res.status(201).json({ success: true, data: savedProject });
-  } catch (error) {
-    console.error('Error creating project:', error);
-    res.status(400).json({ success: false, message: error.message });
+    const saved = await project.save();
+    const populated = await Project.findById(saved._id)
+      .populate('studentId', 'fullName email')
+      .populate('mentorId',  'fullName email');
+
+    res.status(201).json({ success: true, data: populated });
+  } catch (err) {
+    console.error('createProject error:', err.message);
+    res.status(400).json({ success: false, message: err.message });
   }
 };
 
-// Increment views
-export const incrementViews = async (req, res) => {
+export const updateProject = async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
+
+    if (req.user.role === 'student' &&
+        project.studentId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    const allowed = ['title', 'objectives', 'abstract', 'status', 'progressPercentage'];
+    const updates = {};
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) updates[key] = req.body[key];
+    }
+
+    if (updates.status === 'submitted' && project.status !== 'submitted') {
+      updates.submissionDate = new Date();
+    }
+
+    const updated = await Project.findByIdAndUpdate(req.params.id, updates, {
+      new: true,
+      runValidators: true,
+    })
+      .populate('studentId', 'fullName email')
+      .populate('mentorId',  'fullName email');
+
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+// ─── Milestones (nested under /api/projects/:id/milestones) ──────────────────
+
+export const getProjectMilestones = async (req, res) => {
+  try {
+    const milestones = await Milestone.find({ projectId: req.params.id })
+      .sort({ deadline: 1 });
+    res.json({ success: true, data: milestones });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const createMilestone = async (req, res) => {
+  try {
+    const { name, description, deadline } = req.body;
+    if (!name || !deadline) {
+      return res.status(400).json({ success: false, message: 'name and deadline are required' });
+    }
+
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
+
+    const milestone = await Milestone.create({
+      projectId:   req.params.id,
+      name,
+      description,
+      deadline:    new Date(deadline),
+    });
+
+    await notify({
+      recipientId:      project.studentId,
+      notificationType: 'milestone',
+      message:          `New milestone "${name}" was added to your project.`,
+      priority:         'medium',
+    });
+
+    res.status(201).json({ success: true, data: milestone });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+// ─── Legacy stubs kept so old routes don't crash ─────────────────────────────
+
+export const updateProjectStatus = async (req, res) => {
+  const { status, reviewedByTeacherId } = req.body;
   try {
     const project = await Project.findByIdAndUpdate(
       req.params.id,
-      { $inc: { views: 1 } },
-      { new: true }
+      { status, ...(reviewedByTeacherId && { mentorId: reviewedByTeacherId }) },
+      { new: true, runValidators: true }
     );
-    if (!project) {
-      return res.status(404).json({ success: false, message: 'Project not found' });
-    }
+    if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
     res.json({ success: true, data: project });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
   }
 };
-
-// Toggle like for a project
-export const addLike = async (req, res) => {
-  try {
-    const projectId = req.params.id;
-    // In a real application, the userId would come from the authenticated user
-    // For testing purposes, we assume userId is sent in the request body
-    const { userId } = req.body;
-
-    if (!userId) {
-      return res.status(400).json({ success: false, message: 'User ID is required to like/unlike.' });
-    }
-
-    const project = await Project.findById(projectId);
-
-    if (!project) {
-      return res.status(404).json({ success: false, message: 'Project not found.' });
-    }
-
-    const userIdObj = new mongoose.Types.ObjectId(userId);
-
-    const userLikedIndex = project.likes.findIndex(like => like.equals(userIdObj));
-
-    if (userLikedIndex === -1) {
-      project.likes.push(userIdObj);
-      project.likes_count = project.likes.length;
-      await project.save();
-      res.json({ success: true, message: 'Project liked successfully.', data: project });
-    } else {
-      project.likes.splice(userLikedIndex, 1);
-      project.likes_count = project.likes.length;
-      await project.save();
-      res.json({ success: true, message: 'Project unliked successfully.', data: project });
-    }
-
-  } catch (error) {
-    console.error('Error toggling like:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// Add comment
-export const addComment = async (req, res) => {
-  try {
-    // Get project ID from params and comment data from body
-    const projectId = req.params.id;
-    const { commenterId, name, image, text } = req.body; // Added name and image here
-
-    // Create a new comment object based on the schema
-    const newComment = {
-      commenterId: commenterId, // Use the commenterId from the request body
-      name: name, // Include name from request body
-      image: image, // Include image from request body
-      text: text, // Use the comment text from the request body
-      // likes will default to 0
-      // created_at will default to Date.now (if you add it back to schema)
-    };
-
-    // Find the project by ID and push the new comment to the comments array
-    const project = await Project.findByIdAndUpdate(
-      projectId,
-      { $push: { comments: newComment } }, // Push the new comment object to the comments array
-      { new: true } // Return the updated document
-    );
-
-    if (!project) {
-      return res.status(404).json({ success: false, message: 'Project not found' });
-    }
-
-    res.json({ success: true, data: project });
-  } catch (error) {
-    console.error('Error adding comment:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// Update project status by reviewer
-export const updateProjectStatus = async (req, res) => {
-  try {
-    const projectId = req.params.id; // Get project ID from URL parameters
-    const { status, reviewedByTeacherId } = req.body; // Get new status and reviewer ID from request body
-
-    // In a real application, you would add authentication/authorization middleware here
-    // to ensure only authorized reviewers can change the status.
-
-    // Find the project by ID and update its status and reviewer ID
-    const project = await Project.findByIdAndUpdate(
-      projectId,
-      { status: status, reviewedByTeacherId: reviewedByTeacherId }, // Update status and reviewer ID
-      { new: true, runValidators: true } // Return the updated document and run schema validators
-    );
-
-    if (!project) {
-      return res.status(404).json({ success: false, message: 'Project not found' });
-    }
-
-    res.json({ success: true, message: 'Project status updated successfully.', data: project });
-  } catch (error) {
-    console.error('Error updating project status:', error);
-    res.status(400).json({ success: false, message: error.message });
-  }
-};
-
-// Delete comment
-export const deleteComment = async (req, res) => {
-  try {
-    const projectId = req.params.id;
-    const commentId = req.params.commentId;
-    const userId = req.user._id; // Get the authenticated user's ID
-
-    const project = await Project.findById(projectId);
-    if (!project) {
-      return res.status(404).json({ success: false, message: 'Project not found' });
-    }
-
-    const comment = project.comments.id(commentId);
-    if (!comment) {
-      return res.status(404).json({ success: false, message: 'Comment not found' });
-    }
-
-    if (comment.commenterId.toString() !== userId.toString() &&
-        project.ownerId?.toString() !== userId.toString()) {
-      return res.status(403).json({ success: false, message: 'Not authorized to delete this comment' });
-    }
-
-    project.comments.pull(commentId);
-    await project.save();
-
-    res.json({ success: true, message: 'Comment deleted successfully', data: project });
-  } catch (error) {
-    console.error('Error deleting comment:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-}; 

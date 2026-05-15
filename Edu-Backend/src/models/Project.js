@@ -1,74 +1,41 @@
 import mongoose from 'mongoose';
 
-// Schema for comments
-const commentSchema = new mongoose.Schema({
-  commenterId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  name: { type: String, required: true },
-  image: { type: String },
-  text: { type: String, required: true },
-  likes: { type: Number, default: 0 },
-  createdAt: { type: Date, default: Date.now }
-});
+// ─── NEW ACADEMIC SCHEMA (Phase 2) ───────────────────────────────────────────
 
-// Schema for team members
-const teamMemberSchema = new mongoose.Schema({
-  id: { type: mongoose.Schema.Types.ObjectId, required: true },
-  name: { type: String, required: true },
-  role: { type: String, required: true }
-});
+const projectSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true },
+    studentId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    mentorId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    objectives: { type: String },
+    abstract:   { type: String },
+    status: {
+      type: String,
+      enum: ['draft', 'submitted', 'under_review', 'approved', 'rejected'],
+      default: 'draft',
+    },
+    similarityScore:    { type: Number, min: 0, max: 100, default: 0 },
+    submissionDate:     { type: Date },
+    progressPercentage: { type: Number, min: 0, max: 100, default: 0 },
+    repositoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Repository' },
+  },
+  { timestamps: true }
+);
 
-// Schema for tools
-const toolSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  description: { type: String },
-  image: { type: String }
-});
+export default mongoose.model('Project', projectSchema);
 
-// Schema for tools and machines section
-const toolsAndMachinesSchema = new mongoose.Schema({
-  noToolsUsed: { type: Boolean, default: false },
-  tools: [toolSchema]
-});
-
-// Schema for apps and platforms
-const appPlatformSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  description: { type: String },
-  logo: { type: String }
-});
-
-// Schema for documentation
-const documentationSchema = new mongoose.Schema({
-  fileName: { type: String },
-  fileSize: { type: String },
-  fileUrl: { type: String }
-});
-
-// Schema for code and documentation section
-const codeAndDocumentationSchema = new mongoose.Schema({
-  repositoryLink: { type: String },
-  documentation: documentationSchema
-});
-
-const projectSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  tags: { type: [String], default: [] },
-  coverImage: { type: String },
-  elevatorPitch: { type: String, required: true }, // renamed from description
-  projectDescription: { type: String }, // renamed from projectDescriptionFull
-  teamMembers: [teamMemberSchema],
-  toolsAndMachines: toolsAndMachinesSchema,
-  appsAndPlatforms: [appPlatformSchema],
-  codeAndDocumentation: codeAndDocumentationSchema,
-  // Comments section
-  comments: [commentSchema],
-  // Additional fields for internal use
-  views: { type: Number, default: 0 },
-  status: { type: Boolean, default: false },
-  reviewedByTeacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
-}, {
-  timestamps: true
-});
-
-export default mongoose.model('Project', projectSchema); 
+// ─── OLD PORTFOLIO FIELDS (kept for reference — do not restore without migration) ─
+//
+// tags: { type: [String], default: [] },
+// coverImage: { type: String },
+// elevatorPitch: { type: String, required: true },
+// projectDescription: { type: String },
+// teamMembers: [teamMemberSchema],
+// toolsAndMachines: toolsAndMachinesSchema,
+// appsAndPlatforms: [appPlatformSchema],
+// codeAndDocumentation: codeAndDocumentationSchema,
+// comments: [commentSchema],
+// views: { type: Number, default: 0 },
+// status: { type: Boolean, default: false },          ← was boolean, now string enum
+// reviewedByTeacherId: { type: ObjectId, ref: 'User' },
+// likes: [{ type: ObjectId, ref: 'User' }],

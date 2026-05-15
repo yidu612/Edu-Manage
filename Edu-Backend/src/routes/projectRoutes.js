@@ -3,30 +3,23 @@ import {
   getProjects,
   getProject,
   createProject,
-  incrementViews,
-  addLike,
-  addComment,
-  deleteComment,
-  uploadProjectFiles,
-  updateProjectStatus
+  updateProject,
+  getProjectMilestones,
+  createMilestone,
+  updateProjectStatus,
 } from '../controllers/projectController.js';
 import { protectRoute } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
 router.use(protectRoute);
-// Project routes
+
 router.get('/', getProjects);
+router.post('/', createProject);
 router.get('/:id', getProject);
-router.post('/create', uploadProjectFiles, createProject);
-
-// Route to update project status
+router.put('/:id', updateProject);
 router.put('/:id/status', updateProjectStatus);
-
-// Additional functionality routes
-router.post('/:id/view', incrementViews);
-router.post('/:id/like', addLike);
-router.post('/:id/comment', addComment);
-router.delete('/:id/comment/:commentId', deleteComment);
+router.get('/:id/milestones', getProjectMilestones);
+router.post('/:id/milestones', createMilestone);
 
 export default router;

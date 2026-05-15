@@ -235,23 +235,45 @@ export const updateUserProfile = async (req, res) => {
     }
 };
 
-// Get all user profiles
+// Get all user profiles — optional ?role=student|teacher|admin filter
 export const getAllUserProfiles = async (req, res) => {
     try {
-        const users = await User.find()
-            .select('-password'); // Exclude password from response
+        const filter = {};
+        if (req.query.role) filter.role = req.query.role;
+
+        const users = await User.find(filter).select('-password');
 
         res.status(200).json({
             success: true,
             count: users.length,
-            data: users
+            data: users,
         });
     } catch (error) {
         res.status(500).json({
             success: false,
             message: 'Error fetching user profiles',
-            error: error.message
+            error: error.message,
         });
+    }
+};
+
+// GET /api/users/students
+export const getStudents = async (req, res) => {
+    try {
+        const students = await User.find({ role: 'student' }).select('-password');
+        res.status(200).json({ success: true, count: students.length, data: students });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// GET /api/users/teachers
+export const getTeachers = async (req, res) => {
+    try {
+        const teachers = await User.find({ role: 'teacher' }).select('-password');
+        res.status(200).json({ success: true, count: teachers.length, data: teachers });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
