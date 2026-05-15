@@ -248,7 +248,7 @@ export const submitProposal = async (req, res) => {
       title,
       student: req.user._id,
       teacher: teacherId,
-      status: "Pending",
+      status: "pending",
       attachments: [attachment],
     });
 

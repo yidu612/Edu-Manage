@@ -1,11 +1,28 @@
 import axios from "axios";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
 const api = axios.create({
   baseURL: BASE,
   headers: { "Content-Type": "application/json" },
 });
+
+// Recursively map _id → id and fullName → name so every page
+// can use the shorter field names regardless of what MongoDB returns.
+function normalizeFields(obj: unknown): unknown {
+  if (Array.isArray(obj)) return obj.map(normalizeFields);
+  if (obj && typeof obj === "object") {
+    const src = obj as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(src)) {
+      out[key] = normalizeFields(src[key]);
+    }
+    if ("_id" in out && !("id" in out)) out.id = out._id;
+    if ("fullName" in out && !("name" in out)) out.name = out.fullName;
+    return out;
+  }
+  return obj;
+}
 
 api.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
@@ -16,7 +33,10 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    response.data = normalizeFields(response.data);
+    return response;
+  },
   (error) => {
     if (error.response?.status === 401 && typeof window !== "undefined") {
       localStorage.removeItem("auth_token");
@@ -180,7 +200,7 @@ export const documentationApi = {
     api.delete(`/documentation/${docId}`),
 
   downloadUrl: (docId: number) =>
-    `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1"}/documentation/${docId}/download`,
+    `${BASE}/documentation/${docId}/download`,
 };
 
 // ─── Discussion API ───────────────────────────────────────────────────────────

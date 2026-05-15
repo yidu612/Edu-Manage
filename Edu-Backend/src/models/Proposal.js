@@ -12,8 +12,8 @@ const feedbackSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Pending', 'Approved', 'Rejected', 'Needs Revision'],
-    default: 'Pending'
+    enum: ['pending', 'approved', 'rejected', 'needs_revision'],
+    default: 'pending'
   },
   sections: [{
     title: {
@@ -77,8 +77,8 @@ const proposalSchema = new mongoose.Schema({
   status: {
     type: String,
     required: true,
-    enum: ['Pending', 'approved', 'rejected'],
-    default: 'Pending'
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending'
   },
   attachments: [{
     name: {

@@ -147,8 +147,16 @@ export const login = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Login successful",
-      role: user.role,
-      accessToken: token,
+      data: {
+        accessToken: token,
+        user: {
+          _id: user._id,
+          fullName: user.fullName,
+          email: user.email,
+          role: user.role,
+          imageUrl: user.imageUrl,
+        },
+      },
     });
   } catch (error) {
     console.log(`Error in login controller: ${error}`);

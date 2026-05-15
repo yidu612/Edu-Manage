@@ -31,9 +31,9 @@ const uploadToCloudinary = async (file, options = {}) => {
 export const getProjects = async (req, res) => {
   try {
     const projects = await Project.find();
-    res.json({ projects });
+    res.json({ success: true, data: projects });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -42,11 +42,11 @@ export const getProject = async (req, res) => {
   try {
     const project = await Project.findById(req.params.id);
     if (!project) {
-      return res.status(404).json({ message: 'Project not found' });
+      return res.status(404).json({ success: false, message: 'Project not found' });
     }
-    res.json({ project });
+    res.json({ success: true, data: project });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -225,10 +225,10 @@ export const createProject = async (req, res) => {
     });
 
     const savedProject = await project.save();
-    res.status(201).json({ project: savedProject });
+    res.status(201).json({ success: true, data: savedProject });
   } catch (error) {
     console.error('Error creating project:', error);
-    res.status(400).json({ message: error.message });
+    res.status(400).json({ success: false, message: error.message });
   }
 };
 
@@ -241,11 +241,11 @@ export const incrementViews = async (req, res) => {
       { new: true }
     );
     if (!project) {
-      return res.status(404).json({ message: 'Project not found' });
+      return res.status(404).json({ success: false, message: 'Project not found' });
     }
-    res.json({ project });
+    res.json({ success: true, data: project });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -258,37 +258,34 @@ export const addLike = async (req, res) => {
     const { userId } = req.body;
 
     if (!userId) {
-      return res.status(400).json({ message: 'User ID is required to like/unlike.' });
+      return res.status(400).json({ success: false, message: 'User ID is required to like/unlike.' });
     }
 
     const project = await Project.findById(projectId);
 
     if (!project) {
-      return res.status(404).json({ message: 'Project not found.' });
+      return res.status(404).json({ success: false, message: 'Project not found.' });
     }
 
-    const userIdObj = new mongoose.Types.ObjectId(userId); // Convert userId string to ObjectId
+    const userIdObj = new mongoose.Types.ObjectId(userId);
 
-    // Check if the user has already liked the project
     const userLikedIndex = project.likes.findIndex(like => like.equals(userIdObj));
 
     if (userLikedIndex === -1) {
-      // User has not liked the project, so add their like
       project.likes.push(userIdObj);
-      project.likes_count = project.likes.length; // Update the count
+      project.likes_count = project.likes.length;
       await project.save();
-      res.json({ message: 'Project liked successfully.', project });
+      res.json({ success: true, message: 'Project liked successfully.', data: project });
     } else {
-      // User has already liked the project, so remove their like (unlike)
       project.likes.splice(userLikedIndex, 1);
-      project.likes_count = project.likes.length; // Update the count
+      project.likes_count = project.likes.length;
       await project.save();
-      res.json({ message: 'Project unliked successfully.', project });
+      res.json({ success: true, message: 'Project unliked successfully.', data: project });
     }
 
   } catch (error) {
     console.error('Error toggling like:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -317,14 +314,13 @@ export const addComment = async (req, res) => {
     );
 
     if (!project) {
-      return res.status(404).json({ message: 'Project not found' });
+      return res.status(404).json({ success: false, message: 'Project not found' });
     }
 
-    // Return the updated project
-    res.json({ project });
+    res.json({ success: true, data: project });
   } catch (error) {
     console.error('Error adding comment:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -345,13 +341,13 @@ export const updateProjectStatus = async (req, res) => {
     );
 
     if (!project) {
-      return res.status(404).json({ message: 'Project not found' });
+      return res.status(404).json({ success: false, message: 'Project not found' });
     }
 
-    res.json({ message: 'Project status updated successfully.', project });
+    res.json({ success: true, message: 'Project status updated successfully.', data: project });
   } catch (error) {
     console.error('Error updating project status:', error);
-    res.status(400).json({ message: error.message });
+    res.status(400).json({ success: false, message: error.message });
   }
 };
 
@@ -362,31 +358,27 @@ export const deleteComment = async (req, res) => {
     const commentId = req.params.commentId;
     const userId = req.user._id; // Get the authenticated user's ID
 
-    // Find the project
     const project = await Project.findById(projectId);
     if (!project) {
-      return res.status(404).json({ message: 'Project not found' });
+      return res.status(404).json({ success: false, message: 'Project not found' });
     }
 
-    // Find the comment
     const comment = project.comments.id(commentId);
     if (!comment) {
-      return res.status(404).json({ message: 'Comment not found' });
+      return res.status(404).json({ success: false, message: 'Comment not found' });
     }
 
-    // Check if user is either the comment owner or project owner
-    if (comment.commenterId.toString() !== userId.toString() && 
-        project.ownerId.toString() !== userId.toString()) {
-      return res.status(403).json({ message: 'Not authorized to delete this comment' });
+    if (comment.commenterId.toString() !== userId.toString() &&
+        project.ownerId?.toString() !== userId.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized to delete this comment' });
     }
 
-    // Remove the comment
     project.comments.pull(commentId);
     await project.save();
 
-    res.json({ message: 'Comment deleted successfully', project });
+    res.json({ success: true, message: 'Comment deleted successfully', data: project });
   } catch (error) {
     console.error('Error deleting comment:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 }; 

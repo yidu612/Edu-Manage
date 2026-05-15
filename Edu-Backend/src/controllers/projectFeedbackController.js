@@ -43,12 +43,11 @@ export const createProjectFeedback = async (req, res) => {
     
     // Validate required fields
     if (!projectId || !teacherId) {
-      return res.status(400).json({ message: 'Project ID and Teacher ID are required' });
+      return res.status(400).json({ success: false, message: 'Project ID and Teacher ID are required' });
     }
 
-    // Validate status
     if (!status || !['pending', 'approved', 'rejected', 'need review'].includes(status)) {
-      return res.status(400).json({ message: 'Valid status is required (pending, approved, rejected, or need review)' });
+      return res.status(400).json({ success: false, message: 'Valid status is required (pending, approved, rejected, or need review)' });
     }
 
     // Safely parse collaboratorsId from form-data string if needed
@@ -67,10 +66,9 @@ export const createProjectFeedback = async (req, res) => {
       uploadedAttachments = await Promise.all(attachmentUploadPromises);
     }
 
-    // First, find the project to ensure it exists
     const project = await Project.findById(projectId);
     if (!project) {
-      return res.status(404).json({ message: 'Project not found' });
+      return res.status(404).json({ success: false, message: 'Project not found' });
     }
 
     // Create new feedback document
@@ -104,20 +102,19 @@ export const createProjectFeedback = async (req, res) => {
     );
 
     if (!updatedProject) {
-      // If project update fails, delete the feedback and return error
       await ProjectFeedback.findByIdAndDelete(savedFeedback._id);
-      return res.status(500).json({ message: 'Failed to update project status' });
+      return res.status(500).json({ success: false, message: 'Failed to update project status' });
     }
 
-    res.status(201).json({ 
-      message: 'Feedback submitted and project status updated successfully!', 
-      feedback: savedFeedback,
-      project: updatedProject
+    res.status(201).json({
+      success: true,
+      message: 'Feedback submitted and project status updated successfully.',
+      data: { feedback: savedFeedback, project: updatedProject },
     });
 
   } catch (error) {
     console.error('Error submitting project feedback:', error);
-    res.status(400).json({ message: error.message });
+    res.status(400).json({ success: false, message: error.message });
   }
 };
 
@@ -128,35 +125,32 @@ export const updateFeedbackStatus = async (req, res) => {
     const { status } = req.body;
 
     if (!['pending', 'approved', 'rejected', 'need review'].includes(status)) {
-      return res.status(400).json({ message: 'Invalid status value' });
+      return res.status(400).json({ success: false, message: 'Invalid status value' });
     }
 
     const feedback = await ProjectFeedback.findById(feedbackId);
     if (!feedback) {
-      return res.status(404).json({ message: 'Feedback not found' });
+      return res.status(404).json({ success: false, message: 'Feedback not found' });
     }
 
     feedback.status = status;
     const updatedFeedback = await feedback.save();
 
-    // Update project status based on feedback status
-    const projectStatus = status === 'approved' ? true : false;
+    const projectStatus = status === 'approved';
     await Project.findByIdAndUpdate(
       feedback.projectId,
-      { 
-        status: projectStatus, 
-        reviewedByTeacherId: feedback.teacherId 
-      }
+      { status: projectStatus, reviewedByTeacherId: feedback.teacherId }
     );
 
-    res.json({ 
-      message: 'Feedback status updated successfully', 
-      feedback: updatedFeedback 
+    res.json({
+      success: true,
+      message: 'Feedback status updated successfully',
+      data: updatedFeedback,
     });
 
   } catch (error) {
     console.error('Error updating feedback status:', error);
-    res.status(400).json({ message: error.message });
+    res.status(400).json({ success: false, message: error.message });
   }
 };
 
@@ -169,10 +163,10 @@ export const getProjectFeedback = async (req, res) => {
       .populate('teacherId', 'fullName email')
       .populate('collaboratorsId', 'fullName email');
 
-    res.json({ feedback });
+    res.json({ success: true, data: feedback });
 
   } catch (error) {
     console.error('Error fetching project feedback:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 }; 

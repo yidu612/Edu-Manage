@@ -18,18 +18,16 @@ export const addFeedback = async (req, res) => {
       });
     }
 
-    // Validate status if provided
     if (status) {
-      const validStatuses = ['Pending', 'Approved', 'Rejected', 'Needs Revision'];
+      const validStatuses = ['pending', 'approved', 'rejected', 'needs_revision'];
       if (!validStatuses.includes(status)) {
         return res.status(400).json({
           success: false,
-          message: 'Invalid status. Must be one of: Pending, Approved, Rejected, Needs Revision'
+          message: 'Invalid status. Must be one of: pending, approved, rejected, needs_revision'
         });
       }
     }
 
-    // Find the proposal
     const proposal = await Proposal.findOne({ _id: proposalId });
     if (!proposal) {
       return res.status(404).json({
@@ -50,7 +48,7 @@ export const addFeedback = async (req, res) => {
     const newFeedback = {
       teacher: req.user._id,
       projectTitle,
-      status: status || 'Pending',
+      status: status || 'pending',
       sections,
       attachments: attachments || []
     };
@@ -134,13 +132,12 @@ export const updateFeedback = async (req, res) => {
       });
     }
 
-    // Validate status if provided
     if (status) {
-      const validStatuses = ['Pending', 'Approved', 'Rejected', 'Needs Revision'];
+      const validStatuses = ['pending', 'approved', 'rejected', 'needs_revision'];
       if (!validStatuses.includes(status)) {
         return res.status(400).json({
           success: false,
-          message: 'Invalid status. Must be one of: Pending, Approved, Rejected, Needs Revision'
+          message: 'Invalid status. Must be one of: pending, approved, rejected, needs_revision'
         });
       }
     }
