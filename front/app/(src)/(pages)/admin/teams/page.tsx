@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import useSWR from 'swr';
 import { DashboardLayout } from '@/app/(src)/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,160 +36,59 @@ import {
   Clock,
   Eye,
   AlertCircle,
-  Calendar,
   GraduationCap,
   FileText,
   Building2,
+  Loader2,
 } from 'lucide-react';
+import api from '@/lib/api';
 
-// ============================================================================
-// Types
-// ============================================================================
-interface Team {
+const fetcher = (url: string) => api.get(url).then((r) => r.data);
+
+type Project = {
   id: string;
-  name: string;
-  leader: string;
-  members: string[];
-  proposalTitle: string;
-  proposalStatus: 'submitted' | 'under_review' | 'approved' | 'rejected';
-  advisorName: string | null;
+  title: string;
+  status: 'draft' | 'submitted' | 'under_review' | 'approved' | 'rejected';
+  studentId?: { id: string; name?: string; fullName?: string; department?: string };
+  mentorId?: { id: string; name?: string; fullName?: string } | null;
   createdAt: string;
-}
+};
 
-// ============================================================================
-// Mock Data
-// ============================================================================
-const mockTeams: Team[] = [
-  {
-    id: 't1',
-    name: 'Team Alpha',
-    leader: 'John Doe',
-    members: ['John Doe', 'Jane Smith', 'Mike Johnson', 'Emily Brown'],
-    proposalTitle: 'AI-Powered Student Performance Analytics',
-    proposalStatus: 'submitted',
-    advisorName: null,
-    createdAt: '2026-01-10',
-  },
-  {
-    id: 't2',
-    name: 'Team Beta',
-    leader: 'Alice Brown',
-    members: ['Alice Brown', 'Bob Wilson', 'Carol Lee'],
-    proposalTitle: 'Blockchain Certificate Verification',
-    proposalStatus: 'submitted',
-    advisorName: null,
-    createdAt: '2026-01-12',
-  },
-  {
-    id: 't3',
-    name: 'Team Gamma',
-    leader: 'David Park',
-    members: ['David Park', 'Sarah Kim', 'Tom Chen', 'Lisa Wang', 'James Lee'],
-    proposalTitle: 'Smart Campus Navigation App',
-    proposalStatus: 'under_review',
-    advisorName: 'Dr. Sarah Johnson',
-    createdAt: '2026-01-08',
-  },
-  {
-    id: 't4',
-    name: 'Team Delta',
-    leader: 'Emma Wilson',
-    members: ['Emma Wilson', 'Ryan Garcia', 'Sophia Martinez'],
-    proposalTitle: 'Library Management System',
-    proposalStatus: 'approved',
-    advisorName: 'Prof. Michael Chen',
-    createdAt: '2026-01-05',
-  },
-  {
-    id: 't5',
-    name: 'Team Epsilon',
-    leader: 'Kevin Nguyen',
-    members: ['Kevin Nguyen', 'Amy Zhang'],
-    proposalTitle: 'Online Exam Proctoring System',
-    proposalStatus: 'under_review',
-    advisorName: 'Dr. Emily Davis',
-    createdAt: '2026-01-15',
-  },
-];
-
-// ============================================================================
-// Helpers
-// ============================================================================
-const getStatusBadge = (status: Team['proposalStatus']) => {
-  const config = {
-    submitted: {
-      label: 'Pending Assignment',
-      color: 'bg-amber-100 text-amber-700 border-amber-200',
-      icon: Clock,
-    },
-    under_review: {
-      label: 'Under Review',
-      color: 'bg-blue-100 text-blue-700 border-blue-200',
-      icon: Eye,
-    },
-    approved: {
-      label: 'Approved',
-      color: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-      icon: CheckCircle,
-    },
-    rejected: {
-      label: 'Rejected',
-      color: 'bg-red-100 text-red-700 border-red-200',
-      icon: AlertCircle,
-    },
-  };
-  const { label, color, icon: Icon } = config[status];
-  return (
-    <Badge variant="outline" className={`gap-1 ${color}`}>
-      <Icon className="h-3 w-3" />
-      {label}
-    </Badge>
-  );
+const statusConfig: Record<string, { label: string; color: string; Icon: typeof Clock }> = {
+  submitted:    { label: 'Pending Assignment', color: 'bg-amber-100 text-amber-700 border-amber-200',   Icon: Clock },
+  under_review: { label: 'Under Review',       color: 'bg-blue-100 text-blue-700 border-blue-200',      Icon: Eye },
+  approved:     { label: 'Approved',           color: 'bg-emerald-100 text-emerald-700 border-emerald-200', Icon: CheckCircle },
+  rejected:     { label: 'Rejected',           color: 'bg-red-100 text-red-700 border-red-200',         Icon: AlertCircle },
+  draft:        { label: 'Draft',              color: 'bg-gray-100 text-gray-700 border-gray-200',       Icon: FileText },
 };
 
 const getInitials = (name: string) =>
-  name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase();
+  name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
 
-// ============================================================================
-// Component
-// ============================================================================
 export default function TeamsOverviewPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
-  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
-  const stats = useMemo(
-    () => ({
-      total: mockTeams.length,
-      pending: mockTeams.filter((t) => t.proposalStatus === 'submitted').length,
-      underReview: mockTeams.filter((t) => t.proposalStatus === 'under_review')
-        .length,
-      approved: mockTeams.filter((t) => t.proposalStatus === 'approved').length,
-    }),
-    [],
-  );
+  const { data, isLoading } = useSWR('/projects', fetcher);
+  const projects: Project[] = data?.data ?? [];
 
-  const filteredTeams = useMemo(() => {
-    return mockTeams.filter((team) => {
-      const matchesSearch =
-        team.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        team.leader.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        team.proposalTitle.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus =
-        statusFilter === 'all' || team.proposalStatus === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-  }, [searchQuery, statusFilter]);
+  const stats = useMemo(() => ({
+    total:       projects.length,
+    pending:     projects.filter((p) => p.status === 'submitted').length,
+    underReview: projects.filter((p) => p.status === 'under_review').length,
+    approved:    projects.filter((p) => p.status === 'approved').length,
+  }), [projects]);
 
-  const handleViewDetails = (team: Team) => {
-    setSelectedTeam(team);
-    setShowDetailsDialog(true);
-  };
+  const filtered = useMemo(() => projects.filter((p) => {
+    const studentName = p.studentId?.name ?? p.studentId?.fullName ?? '';
+    const matchesSearch =
+      p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.studentId?.department ?? '').toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  }), [projects, searchQuery, statusFilter]);
 
   return (
     <DashboardLayout role="admin">
@@ -200,15 +100,15 @@ export default function TeamsOverviewPage() {
               <div className="p-2 bg-primary/10 rounded-xl">
                 <Users className="h-6 w-6 text-primary" />
               </div>
-              Teams Overview
+              Student Projects
             </h1>
             <p className="text-muted-foreground mt-1">
-              View all student teams in your department
+              View all student projects in your department
             </p>
           </div>
           <Badge variant="outline" className="w-fit text-sm py-1.5 px-3 gap-2">
             <Building2 className="h-4 w-4" />
-            Computer Science Department
+            {projects.length} projects
           </Badge>
         </div>
 
@@ -217,21 +117,17 @@ export default function TeamsOverviewPage() {
           <Card className="bg-purple-50/50 border-purple-100">
             <CardHeader className="pb-2">
               <CardDescription className="text-purple-700 font-medium flex items-center gap-2">
-                <Users className="h-4 w-4" /> Total Teams
+                <Users className="h-4 w-4" /> Total
               </CardDescription>
-              <CardTitle className="text-3xl text-purple-900">
-                {stats.total}
-              </CardTitle>
+              <CardTitle className="text-3xl text-purple-900">{stats.total}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-amber-50/50 border-amber-100">
             <CardHeader className="pb-2">
               <CardDescription className="text-amber-700 font-medium flex items-center gap-2">
-                <Clock className="h-4 w-4" /> Pending Assignment
+                <Clock className="h-4 w-4" /> Pending
               </CardDescription>
-              <CardTitle className="text-3xl text-amber-900">
-                {stats.pending}
-              </CardTitle>
+              <CardTitle className="text-3xl text-amber-900">{stats.pending}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-blue-50/50 border-blue-100">
@@ -239,9 +135,7 @@ export default function TeamsOverviewPage() {
               <CardDescription className="text-blue-700 font-medium flex items-center gap-2">
                 <Eye className="h-4 w-4" /> Under Review
               </CardDescription>
-              <CardTitle className="text-3xl text-blue-900">
-                {stats.underReview}
-              </CardTitle>
+              <CardTitle className="text-3xl text-blue-900">{stats.underReview}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-emerald-50/50 border-emerald-100">
@@ -249,9 +143,7 @@ export default function TeamsOverviewPage() {
               <CardDescription className="text-emerald-700 font-medium flex items-center gap-2">
                 <CheckCircle className="h-4 w-4" /> Approved
               </CardDescription>
-              <CardTitle className="text-3xl text-emerald-900">
-                {stats.approved}
-              </CardTitle>
+              <CardTitle className="text-3xl text-emerald-900">{stats.approved}</CardTitle>
             </CardHeader>
           </Card>
         </div>
@@ -261,16 +153,14 @@ export default function TeamsOverviewPage() {
           <CardHeader>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle className="text-lg">Student Teams</CardTitle>
-                <CardDescription>
-                  All registered teams in your department
-                </CardDescription>
+                <CardTitle className="text-lg">All Projects</CardTitle>
+                <CardDescription>Student projects across all departments</CardDescription>
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search teams..."
+                    placeholder="Search projects or students..."
                     className="pl-10 rounded-full w-full sm:w-64"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -282,10 +172,9 @@ export default function TeamsOverviewPage() {
                     <SelectValue placeholder="Filter by status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Teams</SelectItem>
-                    <SelectItem value="submitted">
-                      Pending Assignment
-                    </SelectItem>
+                    <SelectItem value="all">All Projects</SelectItem>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="submitted">Pending Assignment</SelectItem>
                     <SelectItem value="under_review">Under Review</SelectItem>
                     <SelectItem value="approved">Approved</SelectItem>
                     <SelectItem value="rejected">Rejected</SelectItem>
@@ -295,185 +184,164 @@ export default function TeamsOverviewPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {filteredTeams.length === 0 ? (
+            {isLoading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : filtered.length === 0 ? (
               <div className="text-center py-12">
                 <div className="mx-auto h-16 w-16 bg-muted rounded-full flex items-center justify-center mb-4">
                   <Users className="h-8 w-8 text-muted-foreground" />
                 </div>
-                <h3 className="font-semibold text-lg">No Teams Found</h3>
+                <h3 className="font-semibold text-lg">No Projects Found</h3>
                 <p className="text-muted-foreground mt-1">
-                  Try adjusting your search or filter criteria.
+                  {projects.length === 0
+                    ? 'No student projects yet.'
+                    : 'Try adjusting your search or filter criteria.'}
                 </p>
               </div>
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
-                {filteredTeams.map((team) => (
-                  <Card
-                    key={team.id}
-                    className="hover:shadow-md transition-all cursor-pointer hover:border-primary/20"
-                    onClick={() => handleViewDetails(team)}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                            <Users className="h-6 w-6 text-primary" />
+                {filtered.map((project) => {
+                  const cfg = statusConfig[project.status] ?? statusConfig.draft;
+                  const studentName =
+                    project.studentId?.name ?? project.studentId?.fullName ?? '—';
+                  const advisorName = project.mentorId?.name ?? project.mentorId?.fullName;
+                  return (
+                    <Card
+                      key={project.id}
+                      className="hover:shadow-md transition-all cursor-pointer hover:border-primary/20"
+                      onClick={() => setSelectedProject(project)}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                              <FileText className="h-6 w-6 text-primary" />
+                            </div>
+                            <div className="min-w-0">
+                              <h4 className="font-semibold line-clamp-1">{project.title}</h4>
+                              <p className="text-sm text-muted-foreground">
+                                {studentName}
+                                {project.studentId?.department ? ` · ${project.studentId.department}` : ''}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <h4 className="font-semibold">{team.name}</h4>
-                            <p className="text-sm text-muted-foreground">
-                              Led by {team.leader}
-                            </p>
-                          </div>
+                          <Badge variant="outline" className={`gap-1 shrink-0 text-xs ${cfg.color}`}>
+                            <cfg.Icon className="h-3 w-3" />
+                            {cfg.label}
+                          </Badge>
                         </div>
-                        {getStatusBadge(team.proposalStatus)}
-                      </div>
 
-                      <div className="mt-4 p-3 rounded-lg bg-muted/30">
-                        <div className="flex items-center gap-2 text-sm">
-                          <FileText className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-medium truncate">
-                            {team.proposalTitle}
+                        <div className="mt-4 flex items-center justify-between text-sm">
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(project.createdAt).toLocaleDateString()}
                           </span>
+                          {advisorName ? (
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-6 w-6">
+                                <AvatarFallback className="bg-emerald-100 text-emerald-700 text-xs">
+                                  {getInitials(advisorName)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="text-xs">{advisorName}</span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-amber-600">No advisor assigned</span>
+                          )}
                         </div>
-                      </div>
-
-                      <div className="mt-4 flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Users className="h-3.5 w-3.5" />
-                          {team.members.length} members
-                        </div>
-                        {team.advisorName ? (
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-6 w-6">
-                              <AvatarFallback className="bg-emerald-100 text-emerald-700 text-xs">
-                                {getInitials(team.advisorName)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="text-xs">{team.advisorName}</span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-amber-600">
-                            No advisor assigned
-                          </span>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Team Details Dialog */}
-      <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
+      {/* Project Details Dialog */}
+      <Dialog open={!!selectedProject} onOpenChange={(o) => !o && setSelectedProject(null)}>
         <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-primary" />
-              Team Details
+              <FileText className="h-5 w-5 text-primary" />
+              Project Details
             </DialogTitle>
-            <DialogDescription>
-              Complete information about this team
-            </DialogDescription>
+            <DialogDescription>Complete information about this project</DialogDescription>
           </DialogHeader>
 
-          {selectedTeam && (
-            <div className="space-y-6 py-4">
-              {/* Team Name and Status */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <Users className="h-6 w-6 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-lg">
-                      {selectedTeam.name}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      Created on {selectedTeam.createdAt}
-                    </p>
-                  </div>
-                </div>
-                {getStatusBadge(selectedTeam.proposalStatus)}
-              </div>
-
-              {/* Proposal */}
-              <div className="space-y-2">
-                <h4 className="text-sm font-medium text-muted-foreground">
-                  Proposal
-                </h4>
-                <div className="p-4 rounded-xl bg-muted/30">
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-primary" />
-                    <span className="font-medium">
-                      {selectedTeam.proposalTitle}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Team Members */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-medium text-muted-foreground">
-                  Team Members ({selectedTeam.members.length})
-                </h4>
-                <div className="space-y-2">
-                  {selectedTeam.members.map((member, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-3 p-3 rounded-lg border"
-                    >
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                          {getInitials(member)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="text-sm font-medium">{member}</p>
-                        {member === selectedTeam.leader && (
-                          <Badge variant="secondary" className="text-xs">
-                            Team Leader
-                          </Badge>
-                        )}
-                      </div>
+          {selectedProject && (() => {
+            const cfg = statusConfig[selectedProject.status] ?? statusConfig.draft;
+            const studentName =
+              selectedProject.studentId?.name ?? selectedProject.studentId?.fullName ?? '—';
+            const advisorName =
+              selectedProject.mentorId?.name ?? selectedProject.mentorId?.fullName;
+            return (
+              <div className="space-y-6 py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <FileText className="h-6 w-6 text-primary" />
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Advisor */}
-              <div className="space-y-2">
-                <h4 className="text-sm font-medium text-muted-foreground">
-                  Assigned Advisor
-                </h4>
-                {selectedTeam.advisorName ? (
-                  <div className="flex items-center gap-3 p-4 rounded-xl border">
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback className="bg-emerald-100 text-emerald-700">
-                        {getInitials(selectedTeam.advisorName)}
-                      </AvatarFallback>
-                    </Avatar>
                     <div>
-                      <p className="font-medium">{selectedTeam.advisorName}</p>
+                      <h3 className="font-semibold text-lg">{selectedProject.title}</h3>
                       <p className="text-sm text-muted-foreground">
-                        Faculty Advisor
+                        Created {new Date(selectedProject.createdAt).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
-                ) : (
-                  <div className="p-4 rounded-xl border border-dashed text-center">
-                    <GraduationCap className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">
-                      No advisor assigned yet
-                    </p>
+                  <Badge variant="outline" className={`gap-1 ${cfg.color}`}>
+                    <cfg.Icon className="h-3 w-3" />
+                    {cfg.label}
+                  </Badge>
+                </div>
+
+                {/* Student */}
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-muted-foreground">Student</h4>
+                  <div className="flex items-center gap-3 p-3 rounded-lg border">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                        {getInitials(studentName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-sm font-medium">{studentName}</p>
+                      {selectedProject.studentId?.department && (
+                        <p className="text-xs text-muted-foreground">
+                          {selectedProject.studentId.department}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                )}
+                </div>
+
+                {/* Advisor */}
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-muted-foreground">Assigned Advisor</h4>
+                  {advisorName ? (
+                    <div className="flex items-center gap-3 p-4 rounded-xl border">
+                      <Avatar className="h-10 w-10">
+                        <AvatarFallback className="bg-emerald-100 text-emerald-700">
+                          {getInitials(advisorName)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="font-medium">{advisorName}</p>
+                        <p className="text-sm text-muted-foreground">Faculty Advisor</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-xl border border-dashed text-center">
+                      <GraduationCap className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">No advisor assigned yet</p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </DashboardLayout>

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 import { DashboardLayout } from '@/app/(src)/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,192 +38,131 @@ import {
   UserPlus,
   Crown,
   CheckCircle,
-  Clock,
-  BookOpen,
   Send,
   UserX,
   Plus,
-  Settings,
   LogOut,
   MessageSquare,
   Copy,
+  Loader2,
+  KeyRound,
+  GraduationCap,
 } from 'lucide-react';
 import { useToast } from '@/app/(src)/hooks/use-toast';
-import api, { teamApi } from '@/lib/api';
+import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 
-// Mock Data - Current user is the leader
-const currentUser = {
-  id: 'u1',
-  name: 'John Doe',
-  email: 'john.doe@university.edu',
-};
-
-// Mock team data
-const myTeam = {
-  id: 't1',
-  name: 'Team Alpha',
-  description: 'Building an AI-powered project management system',
-  code: 'ALPHA-2024',
-  createdAt: '2024-01-10',
-  status: 'pending_approval', // pending_approval, approved, rejected
-  members: [
-    {
-      id: 'u1',
-      name: 'John Doe',
-      email: 'john.doe@university.edu',
-      role: 'leader',
-      status: 'active',
-    },
-    {
-      id: 'u2',
-      name: 'Alice Brown',
-      email: 'alice.brown@university.edu',
-      role: 'member',
-      status: 'active',
-    },
-    {
-      id: 'u3',
-      name: 'Bob Wilson',
-      email: 'bob.wilson@university.edu',
-      role: 'member',
-      status: 'pending',
-    },
-  ],
-  advisor: null,
-  advisorRequest: {
-    teacher: {
-      id: 't1',
-      name: 'Dr. Sarah Johnson',
-      department: 'Computer Science',
-    },
-    status: 'pending', // pending, accepted, rejected
-    requestedAt: '2024-01-12',
-  },
-};
-
-// Mock available teachers for advisor selection
-const availableTeachers = [
-  {
-    id: 't1',
-    name: 'Dr. Sarah Johnson',
-    email: 'sarah.johnson@university.edu',
-    department: 'Computer Science',
-    specialization: 'AI/ML',
-    slots: 3,
-  },
-  {
-    id: 't2',
-    name: 'Prof. Michael Chen',
-    email: 'michael.chen@university.edu',
-    department: 'Computer Science',
-    specialization: 'Software Architecture',
-    slots: 1,
-  },
-  {
-    id: 't3',
-    name: 'Dr. Emily Davis',
-    email: 'emily.davis@university.edu',
-    department: 'Software Engineering',
-    specialization: 'Web Technologies',
-    slots: 5,
-  },
-  {
-    id: 't4',
-    name: 'Prof. David Park',
-    email: 'david.park@university.edu',
-    department: 'Information Technology',
-    specialization: 'Cloud Computing',
-    slots: 0,
-  },
-];
-
 const fetcher = (url: string) => api.get(url).then((r) => r.data.data);
+
+function getInitials(name: string = '') {
+  return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
+}
 
 export default function GroupPage() {
   const { toast } = useToast();
   const router = useRouter();
   const { user } = useAuth();
-  const [hasTeam, setHasTeam] = useState(true);
-  const [team, setTeam] = useState(myTeam);
 
+  const { data: team, isLoading } = useSWR('/teams/my', fetcher);
   const { data: peers } = useSWR<any[]>('/users/peers', fetcher);
+  const { data: projectData } = useSWR('/projects', (url) =>
+    api.get(url).then((r) => (r.data.data ?? [])[0])
+  );
+  const mentor = projectData?.mentorId;
 
   // Dialog states
-  const [showCreateTeamDialog, setShowCreateTeamDialog] = useState(false);
-  const [showInviteDialog, setShowInviteDialog] = useState(false);
-  const [showAdvisorDialog, setShowAdvisorDialog] = useState(false);
-  const [showLeaveDialog, setShowLeaveDialog] = useState(false);
+  const [showCreateDialog, setShowCreateDialog]   = useState(false);
+  const [showJoinDialog, setShowJoinDialog]       = useState(false);
+  const [showInviteDialog, setShowInviteDialog]   = useState(false);
+  const [showLeaveDialog, setShowLeaveDialog]     = useState(false);
 
   // Form states
-  const [newTeamName, setNewTeamName] = useState('');
-  const [newTeamDescription, setNewTeamDescription] = useState('');
-  const [selectedStudent, setSelectedStudent] = useState('');
-  const [selectedAdvisor, setSelectedAdvisor] = useState('');
-  const [inviteEmail, setInviteEmail] = useState('');
+  const [newTeamName, setNewTeamName]           = useState('');
+  const [newTeamDesc, setNewTeamDesc]           = useState('');
+  const [joinCode, setJoinCode]                 = useState('');
+  const [selectedStudent, setSelectedStudent]   = useState('');
+  const [inviteEmail, setInviteEmail]           = useState('');
+  const [isSaving, setIsSaving]                 = useState(false);
 
-  const isLeader =
-    team.members.find((m) => m.id === currentUser.id)?.role === 'leader';
+  const isLeader = team?.members?.find(
+    (m: any) => m.user_id === user?.id && m.role === 'leader'
+  );
 
-  const handleCreateTeam = () => {
+  const handleCreateTeam = async () => {
     if (!newTeamName.trim()) return;
+    setIsSaving(true);
+    try {
+      await api.post('/teams', { name: newTeamName.trim(), description: newTeamDesc.trim() });
+      mutate('/teams/my');
+      setShowCreateDialog(false);
+      setNewTeamName('');
+      setNewTeamDesc('');
+      toast({ title: 'Team Created!', description: 'You are now the team leader.' });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Error', description: err.response?.data?.message ?? 'Failed to create team.' });
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
-    // Simulate team creation - creator becomes leader automatically
-    toast({
-      title: 'Team Created!',
-      description: `${newTeamName} has been created. You are now the team leader.`,
-    });
-    setShowCreateTeamDialog(false);
-    setHasTeam(true);
-    setNewTeamName('');
-    setNewTeamDescription('');
+  const handleJoinTeam = async () => {
+    if (!joinCode.trim()) return;
+    setIsSaving(true);
+    try {
+      await api.post('/teams/join', { code: joinCode.trim() });
+      mutate('/teams/my');
+      setShowJoinDialog(false);
+      setJoinCode('');
+      toast({ title: 'Joined Team!', description: 'You have successfully joined the team.' });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Error', description: err.response?.data?.message ?? 'Invalid invite code.' });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleInviteMember = async () => {
     if (!selectedStudent && !inviteEmail) return;
+    setIsSaving(true);
     try {
       if (selectedStudent) {
-        await api.post(`/teams/${team.id}/invite`, { user_id: parseInt(selectedStudent) });
+        await api.post(`/teams/${team.id}/invite`, { user_id: selectedStudent });
       } else {
-        await teamApi.inviteByEmail(team.id, inviteEmail);
+        await api.post(`/teams/${team.id}/invite`, { email: inviteEmail });
       }
-      toast({ title: 'Invitation Sent', description: 'The student has been notified.' });
+      mutate('/teams/my');
       setShowInviteDialog(false);
       setSelectedStudent('');
       setInviteEmail('');
+      toast({ title: 'Invitation Sent', description: 'The student has been notified.' });
     } catch (err: any) {
-      toast({ title: 'Error', description: err.response?.data?.message || 'Invite failed.' });
+      toast({ variant: 'destructive', title: 'Error', description: err.response?.data?.message ?? 'Invite failed.' });
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleRequestAdvisor = () => {
-    const teacher = availableTeachers.find((t) => t.id === selectedAdvisor);
-    if (!teacher) return;
-
-    toast({
-      title: 'Advisor Request Sent',
-      description: `Your request has been sent to ${teacher.name}. Please wait for their response.`,
-    });
-    setShowAdvisorDialog(false);
-    setSelectedAdvisor('');
-  };
-
-  const handleRemoveMember = (memberId: string) => {
-    const member = team.members.find((m) => m.id === memberId);
-    toast({
-      title: 'Member Removed',
-      description: `${member?.name} has been removed from the team.`,
-    });
+  const handleRemoveMember = async (userId: string, name: string) => {
+    try {
+      await api.delete(`/teams/${team.id}/members/${userId}`);
+      mutate('/teams/my');
+      toast({ title: 'Member Removed', description: `${name} has been removed from the team.` });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Error', description: err.response?.data?.message ?? 'Failed to remove member.' });
+    }
   };
 
   const handleLeaveTeam = async () => {
+    setIsSaving(true);
     try {
-      await teamApi.leaveTeam(team.id);
-      toast({ title: 'Left Team', description: 'You have left the team successfully.' });
+      await api.post(`/teams/${team.id}/leave`);
+      mutate('/teams/my');
       setShowLeaveDialog(false);
-      setHasTeam(false);
+      toast({ title: 'Left Team', description: 'You have left the team successfully.' });
     } catch (err: any) {
-      toast({ title: 'Error', description: err.response?.data?.message || 'Failed to leave team.' });
+      toast({ variant: 'destructive', title: 'Error', description: err.response?.data?.message ?? 'Failed to leave team.' });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -232,8 +171,18 @@ export default function GroupPage() {
     toast({ title: 'Copied!', description: 'Team code copied to clipboard.' });
   };
 
-  // No Team State
-  if (!hasTeam) {
+  if (isLoading) {
+    return (
+      <DashboardLayout role="student">
+        <div className="flex justify-center py-24">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // ── No Team State ─────────────────────────────────────────────────────────
+  if (!team) {
     return (
       <DashboardLayout role="student">
         <div className="min-h-[60vh] flex items-center justify-center animate-in fade-in duration-500">
@@ -242,24 +191,16 @@ export default function GroupPage() {
               <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
                 <Users className="h-10 w-10 text-primary" />
               </div>
-              <h2 className="text-2xl font-bold mb-2">
-                You&apos;re Not in a Team Yet
-              </h2>
+              <h2 className="text-2xl font-bold mb-2">You&apos;re Not in a Team Yet</h2>
               <p className="text-muted-foreground mb-6">
-                Create a new team to start your project journey, or join an
-                existing team using an invite code.
+                Create a new team to start your project journey, or join an existing team using an invite code.
               </p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <Button
-                  className="rounded-full gap-2"
-                  onClick={() => setShowCreateTeamDialog(true)}
-                >
-                  <Plus className="h-4 w-4" />
-                  Create Team
+                <Button className="rounded-full gap-2" onClick={() => setShowCreateDialog(true)}>
+                  <Plus className="h-4 w-4" /> Create Team
                 </Button>
-                <Button variant="outline" className="rounded-full gap-2">
-                  <UserPlus className="h-4 w-4" />
-                  Join with Code
+                <Button variant="outline" className="rounded-full gap-2" onClick={() => setShowJoinDialog(true)}>
+                  <KeyRound className="h-4 w-4" /> Join with Code
                 </Button>
               </div>
             </CardContent>
@@ -267,34 +208,17 @@ export default function GroupPage() {
         </div>
 
         {/* Create Team Dialog */}
-        <Dialog
-          open={showCreateTeamDialog}
-          onOpenChange={setShowCreateTeamDialog}
-        >
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogContent className="sm:max-w-md rounded-2xl">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-primary" />
-                Create New Team
+                <Users className="h-5 w-5 text-primary" /> Create New Team
               </DialogTitle>
               <DialogDescription>
-                Create a team for your project. You will automatically become
-                the team leader.
+                You will automatically become the team leader.
               </DialogDescription>
             </DialogHeader>
-
             <div className="space-y-4 py-4">
-              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
-                <div className="flex items-center gap-2 text-amber-800 font-medium mb-1">
-                  <Crown className="h-4 w-4" />
-                  You&apos;ll be the Team Leader
-                </div>
-                <p className="text-sm text-amber-700">
-                  As the team creator, you will be assigned as the leader with
-                  permissions to manage members and settings.
-                </p>
-              </div>
-
               <div className="space-y-2">
                 <Label className="font-medium">Team Name *</Label>
                 <Input
@@ -304,32 +228,56 @@ export default function GroupPage() {
                   onChange={(e) => setNewTeamName(e.target.value)}
                 />
               </div>
-
               <div className="space-y-2">
                 <Label className="font-medium">Description</Label>
                 <Textarea
                   placeholder="Brief description of your team's project focus..."
                   className="rounded-xl resize-none"
-                  value={newTeamDescription}
-                  onChange={(e) => setNewTeamDescription(e.target.value)}
+                  value={newTeamDesc}
+                  onChange={(e) => setNewTeamDesc(e.target.value)}
                 />
               </div>
             </div>
-
             <DialogFooter className="gap-2">
-              <Button
-                variant="outline"
-                className="rounded-full"
-                onClick={() => setShowCreateTeamDialog(false)}
-              >
+              <Button variant="outline" className="rounded-full" onClick={() => setShowCreateDialog(false)}>
                 Cancel
               </Button>
-              <Button
-                className="rounded-full"
-                onClick={handleCreateTeam}
-                disabled={!newTeamName.trim()}
-              >
+              <Button className="rounded-full gap-2" onClick={handleCreateTeam} disabled={!newTeamName.trim() || isSaving}>
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                 Create Team
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Join Team Dialog */}
+        <Dialog open={showJoinDialog} onOpenChange={setShowJoinDialog}>
+          <DialogContent className="sm:max-w-md rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <KeyRound className="h-5 w-5 text-primary" /> Join a Team
+              </DialogTitle>
+              <DialogDescription>
+                Enter the 6-character invite code shared by your team leader.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-2">
+              <Label className="font-medium">Invite Code</Label>
+              <Input
+                placeholder="XXXXXX"
+                className="rounded-xl font-mono uppercase tracking-widest text-center text-lg"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                maxLength={6}
+              />
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" className="rounded-full" onClick={() => setShowJoinDialog(false)}>
+                Cancel
+              </Button>
+              <Button className="rounded-full gap-2" onClick={handleJoinTeam} disabled={joinCode.length < 4 || isSaving}>
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Join Team
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -338,44 +286,18 @@ export default function GroupPage() {
     );
   }
 
-  // Has Team State
+  // ── Has Team State ────────────────────────────────────────────────────────
+  const members: any[] = team.members ?? [];
+
   return (
     <DashboardLayout role="student">
       <div className="space-y-6 animate-in fade-in duration-500">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-2xl font-bold tracking-tight">{team.name}</h1>
-              {team.status === 'pending_approval' && (
-                <Badge
-                  variant="outline"
-                  className="bg-amber-100 text-amber-700 border-amber-200"
-                >
-                  <Clock className="h-3 w-3 mr-1" />
-                  Pending Approval
-                </Badge>
-              )}
-              {team.status === 'approved' && (
-                <Badge
-                  variant="outline"
-                  className="bg-emerald-100 text-emerald-700 border-emerald-200"
-                >
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Approved
-                </Badge>
-              )}
-            </div>
-            <p className="text-muted-foreground">{team.description}</p>
+            <h1 className="text-2xl font-bold tracking-tight">{team.name}</h1>
+            {team.description && <p className="text-muted-foreground">{team.description}</p>}
           </div>
-          {isLeader && (
-            <div className="flex gap-2">
-              <Button variant="outline" className="rounded-full gap-2">
-                <Settings className="h-4 w-4" />
-                Settings
-              </Button>
-            </div>
-          )}
         </div>
 
         {/* Team Code Card */}
@@ -383,20 +305,11 @@ export default function GroupPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground mb-1">
-                  Team Invite Code
-                </p>
-                <p className="text-2xl font-mono font-bold text-primary">
-                  {team.code}
-                </p>
+                <p className="text-sm text-muted-foreground mb-1">Team Invite Code</p>
+                <p className="text-2xl font-mono font-bold text-primary">{team.code}</p>
               </div>
-              <Button
-                variant="outline"
-                className="rounded-full gap-2"
-                onClick={copyTeamCode}
-              >
-                <Copy className="h-4 w-4" />
-                Copy Code
+              <Button variant="outline" className="rounded-full gap-2" onClick={copyTeamCode}>
+                <Copy className="h-4 w-4" /> Copy Code
               </Button>
             </div>
           </CardContent>
@@ -410,179 +323,102 @@ export default function GroupPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle className="flex items-center gap-2">
-                      <Users className="h-5 w-5 text-primary" />
-                      Team Members
+                      <Users className="h-5 w-5 text-primary" /> Team Members
                     </CardTitle>
-                    <CardDescription>
-                      {team.members.length} members
-                    </CardDescription>
+                    <CardDescription>{members.length} members</CardDescription>
                   </div>
                   {isLeader && (
-                    <Button
-                      className="rounded-full gap-2"
-                      onClick={() => setShowInviteDialog(true)}
-                    >
-                      <UserPlus className="h-4 w-4" />
-                      Invite
+                    <Button className="rounded-full gap-2" onClick={() => setShowInviteDialog(true)}>
+                      <UserPlus className="h-4 w-4" /> Invite
                     </Button>
                   )}
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                {team.members.map((member) => (
-                  <div
-                    key={member.id}
-                    className="flex items-center justify-between p-4 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-4">
-                      <Avatar className="h-12 w-12 border-2 border-background shadow">
-                        <AvatarFallback className="bg-primary/10 text-primary font-bold">
-                          {member.name
-                            .split(' ')
-                            .map((n) => n[0])
-                            .join('')}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-semibold">{member.name}</h4>
-                          {member.role === 'leader' && (
-                            <Badge className="bg-amber-100 text-amber-700 gap-1">
-                              <Crown className="h-3 w-3" />
-                              Leader
-                            </Badge>
-                          )}
-                          {member.status === 'pending' && (
-                            <Badge variant="secondary" className="text-xs">
-                              <Clock className="h-3 w-3 mr-1" />
-                              Pending
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {member.email}
-                        </p>
-                      </div>
-                    </div>
-                    {isLeader && member.id !== currentUser.id && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 rounded-full text-red-600 hover:bg-red-50"
-                        onClick={() => handleRemoveMember(member.id)}
-                      >
-                        <UserX className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            {/* Team Status Card */}
-            {team.status === 'pending_approval' && (
-              <Card className="border-amber-200 bg-amber-50/50">
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-4">
-                    <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
-                      <Clock className="h-5 w-5 text-amber-600" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-amber-900">
-                        Awaiting Teacher Approval
-                      </h4>
-                      <p className="text-sm text-amber-700 mt-1">
-                        Your team is pending approval from a teacher. Once
-                        approved, you can start working on your project
-                        proposal.
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          {/* Advisor Section */}
-          <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BookOpen className="h-5 w-5 text-primary" />
-                  Advisor
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {team.advisor ? (
-                  <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
-                    <div className="flex items-center gap-3 mb-2">
-                      <Avatar>
-                        <AvatarFallback className="bg-emerald-100 text-emerald-700">
-                          {team.advisor}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">{team.advisor}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Your Advisor
-                        </p>
-                      </div>
-                    </div>
-                    <Badge className="bg-emerald-100 text-emerald-700 gap-1">
-                      <CheckCircle className="h-3 w-3" />
-                      Accepted
-                    </Badge>
-                  </div>
-                ) : team.advisorRequest ? (
-                  <div className="space-y-4">
-                    <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
-                      <div className="flex items-center gap-3 mb-3">
-                        <Avatar>
-                          <AvatarFallback className="bg-amber-100 text-amber-700">
-                            {team.advisorRequest.teacher.name
-                              .split(' ')
-                              .map((n) => n[0])
-                              .join('')}
+                {members.map((member: any) => {
+                  const name = member.user?.name ?? member.user?.fullName ?? 'Unknown';
+                  const isMe = member.user_id === user?.id;
+                  return (
+                    <div
+                      key={member.user_id}
+                      className="flex items-center justify-between p-4 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-4">
+                        <Avatar className="h-12 w-12 border-2 border-background shadow">
+                          <AvatarFallback className="bg-primary/10 text-primary font-bold">
+                            {getInitials(name)}
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="font-medium">
-                            {team.advisorRequest.teacher.name}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {team.advisorRequest.teacher.department}
-                          </p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-semibold">{name}</h4>
+                            {member.role === 'leader' && (
+                              <Badge className="bg-amber-100 text-amber-700 gap-1">
+                                <Crown className="h-3 w-3" /> Leader
+                              </Badge>
+                            )}
+                            {isMe && (
+                              <Badge variant="outline" className="text-xs">You</Badge>
+                            )}
+                            {member.invitation_status === 'pending' && (
+                              <Badge variant="secondary" className="text-xs">Pending</Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground">{member.user?.email}</p>
                         </div>
                       </div>
-                      <Badge className="bg-amber-100 text-amber-700 gap-1">
-                        <Clock className="h-3 w-3" />
-                        Request Pending
-                      </Badge>
-                      <p className="text-xs text-amber-700 mt-2">
-                        Requested on{' '}
-                        {new Date(
-                          team.advisorRequest.requestedAt,
-                        ).toLocaleDateString()}
-                      </p>
+                      {isLeader && !isMe && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 rounded-full text-red-600 hover:bg-red-50"
+                          onClick={() => handleRemoveMember(member.user_id, name)}
+                        >
+                          <UserX className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-4">
+            {/* Advisor (from project) */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <GraduationCap className="h-5 w-5 text-primary" /> Advisor
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {mentor ? (
+                  <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+                    <div className="flex items-center gap-3">
+                      <Avatar>
+                        <AvatarFallback className="bg-emerald-100 text-emerald-700">
+                          {getInitials(mentor.name ?? mentor.fullName)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="font-medium">{mentor.name ?? mentor.fullName}</p>
+                        <p className="text-sm text-muted-foreground">{mentor.department}</p>
+                      </div>
+                    </div>
+                    <Badge className="mt-3 bg-emerald-100 text-emerald-700 gap-1">
+                      <CheckCircle className="h-3 w-3" /> Assigned
+                    </Badge>
                   </div>
                 ) : (
                   <div className="text-center py-6">
                     <div className="h-12 w-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
-                      <BookOpen className="h-6 w-6 text-muted-foreground" />
+                      <GraduationCap className="h-6 w-6 text-muted-foreground" />
                     </div>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      No advisor assigned yet
+                    <p className="text-sm text-muted-foreground">
+                      No advisor assigned yet. The admin will assign a mentor to your project.
                     </p>
-                    {isLeader && (
-                      <Button
-                        className="rounded-full gap-2 w-full"
-                        onClick={() => setShowAdvisorDialog(true)}
-                      >
-                        <UserPlus className="h-4 w-4" />
-                        Request Advisor
-                      </Button>
-                    )}
                   </div>
                 )}
               </CardContent>
@@ -599,16 +435,14 @@ export default function GroupPage() {
                   className="w-full justify-start rounded-xl gap-2"
                   onClick={() => router.push('/student/dashboard/discussions')}
                 >
-                  <MessageSquare className="h-4 w-4" />
-                  Team Discussions
+                  <MessageSquare className="h-4 w-4" /> Team Discussions
                 </Button>
                 <Button
                   variant="outline"
                   className="w-full justify-start rounded-xl gap-2 text-red-600 hover:bg-red-50"
                   onClick={() => setShowLeaveDialog(true)}
                 >
-                  <LogOut className="h-4 w-4" />
-                  Leave Team
+                  <LogOut className="h-4 w-4" /> Leave Team
                 </Button>
               </CardContent>
             </Card>
@@ -621,46 +455,33 @@ export default function GroupPage() {
         <DialogContent className="sm:max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5 text-primary" />
-              Invite Member
+              <UserPlus className="h-5 w-5 text-primary" /> Invite Member
             </DialogTitle>
-            <DialogDescription>
-              Invite a student to join your team.
-            </DialogDescription>
+            <DialogDescription>Invite a student to join your team.</DialogDescription>
           </DialogHeader>
 
           <Tabs defaultValue="select" className="w-full">
             <TabsList className="w-full">
-              <TabsTrigger value="select" className="flex-1">
-                Select Student
-              </TabsTrigger>
-              <TabsTrigger value="email" className="flex-1">
-                By Email
-              </TabsTrigger>
+              <TabsTrigger value="select" className="flex-1">Select Student</TabsTrigger>
+              <TabsTrigger value="email" className="flex-1">By Email</TabsTrigger>
             </TabsList>
 
             <TabsContent value="select" className="mt-4 space-y-4">
-              <Select
-                value={selectedStudent}
-                onValueChange={setSelectedStudent}
-              >
+              <Select value={selectedStudent} onValueChange={setSelectedStudent}>
                 <SelectTrigger className="rounded-xl">
                   <SelectValue placeholder="Select a student..." />
                 </SelectTrigger>
                 <SelectContent className="max-h-[200px]">
                   {peers?.map((p: any) => {
-                    const isMember = team.members.some((m) => m.id === String(p.id));
+                    const alreadyMember = members.some((m: any) => m.user_id === String(p.id));
                     return (
                       <SelectItem
                         key={p.id}
-                        value={p.id.toString()}
-                        disabled={isMember}
-                        className={isMember ? 'opacity-50 cursor-not-allowed' : ''}
+                        value={String(p.id)}
+                        disabled={alreadyMember}
+                        className={alreadyMember ? 'opacity-50 cursor-not-allowed' : ''}
                       >
-                        <div>
-                          <p>{p.name}{isMember ? ' (Already added)' : ''}</p>
-                          <p className="text-xs text-muted-foreground">{p.email}</p>
-                        </div>
+                        <span>{p.name ?? p.fullName}{alreadyMember ? ' (Already added)' : ''}</span>
                       </SelectItem>
                     );
                   })}
@@ -686,106 +507,16 @@ export default function GroupPage() {
           </Tabs>
 
           <DialogFooter className="gap-2 mt-4">
-            <Button
-              variant="outline"
-              className="rounded-full"
-              onClick={() => setShowInviteDialog(false)}
-            >
+            <Button variant="outline" className="rounded-full" onClick={() => setShowInviteDialog(false)}>
               Cancel
             </Button>
             <Button
               className="rounded-full gap-2"
               onClick={handleInviteMember}
-              disabled={!selectedStudent && !inviteEmail}
+              disabled={(!selectedStudent && !inviteEmail) || isSaving}
             >
-              <Send className="h-4 w-4" />
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               Send Invite
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Request Advisor Dialog */}
-      <Dialog open={showAdvisorDialog} onOpenChange={setShowAdvisorDialog}>
-        <DialogContent className="sm:max-w-lg rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <BookOpen className="h-5 w-5 text-primary" />
-              Request Advisor
-            </DialogTitle>
-            <DialogDescription>
-              Select a teacher to be your project advisor. They will receive
-              your request and can accept or decline.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-3">
-              {availableTeachers.map((teacher) => (
-                <div
-                  key={teacher.id}
-                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                    selectedAdvisor === teacher.id
-                      ? 'border-primary bg-primary/5'
-                      : teacher.slots === 0
-                        ? 'border-muted bg-muted/30 opacity-50 cursor-not-allowed'
-                        : 'border-muted hover:border-primary/50'
-                  }`}
-                  onClick={() =>
-                    teacher.slots > 0 && setSelectedAdvisor(teacher.id)
-                  }
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Avatar>
-                        <AvatarFallback className="bg-primary/10 text-primary">
-                          {teacher.name
-                            .split(' ')
-                            .map((n) => n[0])
-                            .join('')}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">{teacher.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {teacher.department}
-                        </p>
-                        <Badge variant="secondary" className="text-xs mt-1">
-                          {teacher.specialization}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <Badge
-                        variant={teacher.slots > 0 ? 'outline' : 'secondary'}
-                      >
-                        {teacher.slots > 0 ? `${teacher.slots} slots` : 'Full'}
-                      </Badge>
-                      {selectedAdvisor === teacher.id && (
-                        <CheckCircle className="h-5 w-5 text-primary mt-2" />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              className="rounded-full"
-              onClick={() => setShowAdvisorDialog(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="rounded-full gap-2"
-              onClick={handleRequestAdvisor}
-              disabled={!selectedAdvisor}
-            >
-              <Send className="h-4 w-4" />
-              Send Request
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -796,29 +527,19 @@ export default function GroupPage() {
         <DialogContent className="sm:max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-red-600">
-              <LogOut className="h-5 w-5" />
-              Leave Team
+              <LogOut className="h-5 w-5" /> Leave Team
             </DialogTitle>
             <DialogDescription>
               Are you sure you want to leave {team.name}?
-              {isLeader &&
-                ' As the leader, the team will be transferred to another member or disbanded.'}
+              {isLeader && ' As the leader, the remaining members will need to elect a new leader.'}
             </DialogDescription>
           </DialogHeader>
-
           <DialogFooter className="gap-2 mt-4">
-            <Button
-              variant="outline"
-              className="rounded-full"
-              onClick={() => setShowLeaveDialog(false)}
-            >
+            <Button variant="outline" className="rounded-full" onClick={() => setShowLeaveDialog(false)}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              className="rounded-full"
-              onClick={handleLeaveTeam}
-            >
+            <Button variant="destructive" className="rounded-full" onClick={handleLeaveTeam} disabled={isSaving}>
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Leave Team
             </Button>
           </DialogFooter>

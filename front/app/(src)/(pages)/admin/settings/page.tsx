@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/app/(src)/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,10 +13,9 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Settings,
-  Bell,
   User,
   GraduationCap,
   Loader2,
@@ -24,61 +23,96 @@ import {
   Mail,
   Phone,
   Building2,
-  Calendar,
-  FileText,
+  Lock,
 } from 'lucide-react';
 import { useToast } from '@/app/(src)/hooks/use-toast';
+import { useAuth } from '@/context/AuthContext';
+import api from '@/lib/api';
 
 export default function AdminSettingsPage() {
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(false);
+  const { user } = useAuth();
+  const [isSaving, setIsSaving] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
-  // Department Head Profile
   const [profile, setProfile] = useState({
-    name: 'Dr. James Mitchell',
-    email: 'j.mitchell@university.edu',
-    phone: '+1 (555) 987-6543',
-    department: 'Computer Science',
-    title: 'Department Head',
+    fullName: '',
+    phone: '',
+    department: '',
+    bio: '',
   });
 
-  // Department Settings
-  const [departmentSettings, setDepartmentSettings] = useState({
-    maxGroupSize: '5',
-    minGroupSize: '2',
-    proposalDeadline: '2024-06-30',
-    maxAdvisorCapacity: '5',
+  const [passwords, setPasswords] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
   });
 
-  // Notification Preferences
-  const [notifications, setNotifications] = useState({
-    newProposals: true,
-    proposalUpdates: true,
-    advisorAssignments: true,
-    weeklyReports: true,
-  });
-
-  const handleSaveProfile = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      toast({
-        title: 'Profile Updated',
-        description: 'Your profile has been updated successfully.',
+  useEffect(() => {
+    if (user) {
+      setProfile({
+        fullName:   user.name ?? user.fullName ?? '',
+        phone:      (user as Record<string, unknown>).phone as string ?? '',
+        department: (user as Record<string, unknown>).department as string ?? '',
+        bio:        (user as Record<string, unknown>).bio as string ?? '',
       });
-      setIsLoading(false);
-    }, 1000);
+    }
+  }, [user]);
+
+  const handleSaveProfile = async () => {
+    setIsSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append('fullName', profile.fullName);
+      if (profile.phone) fd.append('phone', profile.phone);
+      if (profile.department) fd.append('department', profile.department);
+      if (profile.bio) fd.append('bio', profile.bio);
+
+      const res = await api.put('/users/update', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      toast({ title: 'Profile Updated', description: 'Your profile has been saved.' });
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed to update profile.';
+      toast({ variant: 'destructive', title: 'Error', description: msg });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleSaveSettings = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      toast({
-        title: 'Settings Saved',
-        description: 'Department settings have been updated.',
+  const handleChangePassword = async () => {
+    if (passwords.newPassword !== passwords.confirmPassword) {
+      toast({ variant: 'destructive', title: 'Error', description: 'New passwords do not match.' });
+      return;
+    }
+    if (passwords.newPassword.length < 8) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Password must be at least 8 characters.' });
+      return;
+    }
+    setIsChangingPassword(true);
+    try {
+      const fd = new FormData();
+      fd.append('currentPassword', passwords.currentPassword);
+      fd.append('password', passwords.newPassword);
+
+      await api.put('/users/update', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
-      setIsLoading(false);
-    }, 1000);
+
+      toast({ title: 'Password Changed', description: 'Your password has been updated.' });
+      setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed to change password.';
+      toast({ variant: 'destructive', title: 'Error', description: msg });
+    } finally {
+      setIsChangingPassword(false);
+    }
   };
+
+  const initials = profile.fullName
+    ? profile.fullName.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
+    : 'AD';
 
   return (
     <DashboardLayout role="admin">
@@ -93,12 +127,12 @@ export default function AdminSettingsPage() {
               Settings
             </h1>
             <p className="text-muted-foreground mt-1">
-              Manage your profile and department preferences
+              Manage your profile and account preferences
             </p>
           </div>
           <Badge variant="outline" className="w-fit text-sm py-1.5 px-3 gap-2">
-            <Building2 className="h-4 w-4" />
-            {profile.department} Department
+            <GraduationCap className="h-4 w-4" />
+            Admin
           </Badge>
         </div>
 
@@ -115,21 +149,24 @@ export default function AdminSettingsPage() {
             {/* Profile Header */}
             <div className="flex items-center gap-4 p-4 rounded-xl bg-muted/30">
               <Avatar className="h-16 w-16">
+                <AvatarImage src={(user as Record<string, unknown>)?.imageUrl as string} />
                 <AvatarFallback className="bg-primary/10 text-primary text-lg font-semibold">
-                  JM
+                  {initials}
                 </AvatarFallback>
               </Avatar>
               <div>
-                <h3 className="font-semibold text-lg">{profile.name}</h3>
+                <h3 className="font-semibold text-lg">{profile.fullName || 'Admin'}</h3>
                 <div className="flex items-center gap-2 mt-1">
                   <Badge variant="secondary" className="gap-1">
                     <GraduationCap className="h-3 w-3" />
-                    {profile.title}
+                    Administrator
                   </Badge>
-                  <Badge variant="outline" className="gap-1">
-                    <Building2 className="h-3 w-3" />
-                    {profile.department}
-                  </Badge>
+                  {user?.email && (
+                    <Badge variant="outline" className="gap-1">
+                      <Mail className="h-3 w-3" />
+                      {user.email}
+                    </Badge>
+                  )}
                 </div>
               </div>
             </div>
@@ -137,60 +174,47 @@ export default function AdminSettingsPage() {
             {/* Profile Form */}
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="name" className="font-semibold">
-                  Full Name
-                </Label>
+                <Label htmlFor="fullName" className="font-semibold">Full Name</Label>
                 <Input
-                  id="name"
-                  value={profile.name}
-                  onChange={(e) =>
-                    setProfile({ ...profile, name: e.target.value })
-                  }
+                  id="fullName"
+                  value={profile.fullName}
+                  onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
                   className="h-11 rounded-xl"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="title" className="font-semibold">
-                  Title
+                <Label htmlFor="email" className="font-semibold flex items-center gap-2">
+                  <Mail className="h-4 w-4" /> Email
                 </Label>
                 <Input
-                  id="title"
-                  value={profile.title}
+                  id="email"
+                  value={user?.email ?? ''}
                   disabled
                   className="h-11 rounded-xl bg-muted"
                 />
               </div>
               <div className="space-y-2">
-                <Label
-                  htmlFor="email"
-                  className="font-semibold flex items-center gap-2"
-                >
-                  <Mail className="h-4 w-4" /> Email
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={profile.email}
-                  onChange={(e) =>
-                    setProfile({ ...profile, email: e.target.value })
-                  }
-                  className="h-11 rounded-xl"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label
-                  htmlFor="phone"
-                  className="font-semibold flex items-center gap-2"
-                >
+                <Label htmlFor="phone" className="font-semibold flex items-center gap-2">
                   <Phone className="h-4 w-4" /> Phone
                 </Label>
                 <Input
                   id="phone"
                   value={profile.phone}
-                  onChange={(e) =>
-                    setProfile({ ...profile, phone: e.target.value })
-                  }
+                  onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
                   className="h-11 rounded-xl"
+                  placeholder="e.g. +1 555 000 0000"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="department" className="font-semibold flex items-center gap-2">
+                  <Building2 className="h-4 w-4" /> Department
+                </Label>
+                <Input
+                  id="department"
+                  value={profile.department}
+                  onChange={(e) => setProfile({ ...profile, department: e.target.value })}
+                  className="h-11 rounded-xl"
+                  placeholder="e.g. Computer Science"
                 />
               </div>
             </div>
@@ -198,195 +222,66 @@ export default function AdminSettingsPage() {
             <Button
               onClick={handleSaveProfile}
               className="rounded-full gap-2"
-              disabled={isLoading}
+              disabled={isSaving}
             >
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Save Profile
             </Button>
           </CardContent>
         </Card>
 
-        {/* Department Settings */}
+        {/* Change Password */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-primary" />
-              <CardTitle>Department Settings</CardTitle>
+              <Lock className="h-5 w-5 text-primary" />
+              <CardTitle>Change Password</CardTitle>
             </div>
-            <CardDescription>
-              Configure settings for your department
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="minGroupSize" className="font-semibold">
-                  Minimum Group Size
-                </Label>
-                <Input
-                  id="minGroupSize"
-                  type="number"
-                  value={departmentSettings.minGroupSize}
-                  onChange={(e) =>
-                    setDepartmentSettings({
-                      ...departmentSettings,
-                      minGroupSize: e.target.value,
-                    })
-                  }
-                  className="h-11 rounded-xl"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="maxGroupSize" className="font-semibold">
-                  Maximum Group Size
-                </Label>
-                <Input
-                  id="maxGroupSize"
-                  type="number"
-                  value={departmentSettings.maxGroupSize}
-                  onChange={(e) =>
-                    setDepartmentSettings({
-                      ...departmentSettings,
-                      maxGroupSize: e.target.value,
-                    })
-                  }
-                  className="h-11 rounded-xl"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label
-                  htmlFor="proposalDeadline"
-                  className="font-semibold flex items-center gap-2"
-                >
-                  <Calendar className="h-4 w-4" /> Proposal Deadline
-                </Label>
-                <Input
-                  id="proposalDeadline"
-                  type="date"
-                  value={departmentSettings.proposalDeadline}
-                  onChange={(e) =>
-                    setDepartmentSettings({
-                      ...departmentSettings,
-                      proposalDeadline: e.target.value,
-                    })
-                  }
-                  className="h-11 rounded-xl"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label
-                  htmlFor="maxAdvisorCapacity"
-                  className="font-semibold flex items-center gap-2"
-                >
-                  <GraduationCap className="h-4 w-4" /> Default Advisor Capacity
-                </Label>
-                <Input
-                  id="maxAdvisorCapacity"
-                  type="number"
-                  value={departmentSettings.maxAdvisorCapacity}
-                  onChange={(e) =>
-                    setDepartmentSettings({
-                      ...departmentSettings,
-                      maxAdvisorCapacity: e.target.value,
-                    })
-                  }
-                  className="h-11 rounded-xl"
-                />
-              </div>
-            </div>
-
-            <Button
-              onClick={handleSaveSettings}
-              className="rounded-full gap-2"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              Save Settings
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Notifications */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Bell className="h-5 w-5 text-primary" />
-              <CardTitle>Notification Preferences</CardTitle>
-            </div>
-            <CardDescription>
-              Configure when you want to receive notifications
-            </CardDescription>
+            <CardDescription>Update your account password</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {[
-              {
-                key: 'newProposals',
-                label: 'New Proposal Submissions',
-                desc: 'Get notified when teams submit new proposals',
-                icon: FileText,
-              },
-              {
-                key: 'proposalUpdates',
-                label: 'Proposal Status Updates',
-                desc: 'Notifications when advisors update proposal status',
-                icon: FileText,
-              },
-              {
-                key: 'advisorAssignments',
-                label: 'Assignment Confirmations',
-                desc: 'Confirmation when advisors accept assigned proposals',
-                icon: GraduationCap,
-              },
-              {
-                key: 'weeklyReports',
-                label: 'Weekly Summary Reports',
-                desc: 'Receive weekly overview of department activity',
-                icon: Calendar,
-              },
-            ].map((item) => (
-              <div
-                key={item.key}
-                className="flex items-center justify-between p-4 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <item.icon className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{item.label}</p>
-                    <p className="text-sm text-muted-foreground">{item.desc}</p>
-                  </div>
-                </div>
-                <Button
-                  variant={
-                    notifications[item.key as keyof typeof notifications]
-                      ? 'default'
-                      : 'outline'
-                  }
-                  size="sm"
-                  className="rounded-full"
-                  onClick={() =>
-                    setNotifications({
-                      ...notifications,
-                      [item.key]:
-                        !notifications[item.key as keyof typeof notifications],
-                    })
-                  }
-                >
-                  {notifications[item.key as keyof typeof notifications]
-                    ? 'On'
-                    : 'Off'}
-                </Button>
+            <div className="space-y-2">
+              <Label htmlFor="currentPassword" className="font-semibold">Current Password</Label>
+              <Input
+                id="currentPassword"
+                type="password"
+                value={passwords.currentPassword}
+                onChange={(e) => setPasswords({ ...passwords, currentPassword: e.target.value })}
+                className="h-11 rounded-xl"
+              />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="newPassword" className="font-semibold">New Password</Label>
+                <Input
+                  id="newPassword"
+                  type="password"
+                  value={passwords.newPassword}
+                  onChange={(e) => setPasswords({ ...passwords, newPassword: e.target.value })}
+                  className="h-11 rounded-xl"
+                  placeholder="Min. 8 characters"
+                />
               </div>
-            ))}
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword" className="font-semibold">Confirm Password</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  value={passwords.confirmPassword}
+                  onChange={(e) => setPasswords({ ...passwords, confirmPassword: e.target.value })}
+                  className="h-11 rounded-xl"
+                />
+              </div>
+            </div>
+            <Button
+              onClick={handleChangePassword}
+              variant="outline"
+              className="rounded-full gap-2"
+              disabled={isChangingPassword || !passwords.currentPassword || !passwords.newPassword}
+            >
+              {isChangingPassword ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+              Change Password
+            </Button>
           </CardContent>
         </Card>
       </div>

@@ -106,29 +106,27 @@ export interface Notification {
 }
 
 export interface TeamMember {
-  id: string;
-  user_id?: string;
-  name: string;
-  email: string;
+  user_id: string;
   role: "leader" | "member";
-  status: "active" | "pending";
-}
-
-export interface AdvisorRequest {
-  teacher: { id: string; name: string; department: string };
-  status: "pending" | "accepted" | "rejected";
-  requestedAt: string;
+  invitation_status: "pending" | "accepted" | "rejected";
+  user: {
+    id: string;
+    name: string;
+    fullName?: string;
+    email: string;
+    department?: string;
+  };
 }
 
 export interface Team {
   id: string;
+  _id?: string;
   name: string;
-  description: string;
+  description?: string;
   code: string;
   createdAt: string;
-  status: "pending_approval" | "approved" | "rejected";
+  status: "active" | "approved" | "rejected";
+  is_finalized: boolean;
+  creator: { id: string; name: string; email: string };
   members: TeamMember[];
-  advisor: string | null;
-  advisorRequest: AdvisorRequest | null;
-  project_id?: string;
 }

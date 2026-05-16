@@ -11,6 +11,9 @@ import proposalRoutes from "./routes/proposalRoutes.js";
 import proposalFeedbackRoutes from "./routes/proposalFeedbackRoutes.js";
 import profileRoutes from "./routes/profileRoutes.js";
 import projectFeedbackRoutes from "./routes/projectFeedbackRoutes.js";
+import discussionRoutes from "./routes/discussionRoutes.js";
+import publicProjectRoutes from "./routes/publicProjectRoutes.js";
+import teamRoutes from "./routes/teamRoutes.js";
 
 const app = express();
 
@@ -46,6 +49,9 @@ app.use("/api/proposals", proposalRoutes);
 app.use("/api/users", profileRoutes);
 app.use("/api/feedback", proposalFeedbackRoutes);
 app.use("/api/project", projectFeedbackRoutes);
+app.use("/api/discussions", discussionRoutes);
+app.use("/api/public/projects", publicProjectRoutes);
+app.use("/api/teams", teamRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

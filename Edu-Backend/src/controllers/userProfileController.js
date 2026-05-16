@@ -277,6 +277,17 @@ export const getTeachers = async (req, res) => {
     }
 };
 
+// GET /api/users/peers — other students (excluding self)
+export const getPeers = async (req, res) => {
+    try {
+        const peers = await User.find({ role: 'student', _id: { $ne: req.user._id } })
+            .select('fullName email department');
+        res.status(200).json({ success: true, data: peers });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 export default {
     updateUserProfile,
     getAllUserProfiles,
