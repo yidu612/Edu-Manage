@@ -1,310 +1,118 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import useSWR from 'swr';
 import { DashboardLayout } from '@/app/(src)/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardFooter,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Progress } from '@/components/ui/progress';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  GraduationCap,
-  Search,
-  Users,
-  Mail,
-  Phone,
-  BookOpen,
-  Eye,
-  CheckCircle,
-  Building2,
-  Calendar,
+  GraduationCap, Search, Users, Mail, BookOpen, Eye, CheckCircle, Building2, Loader2,
 } from 'lucide-react';
+import api from '@/lib/api';
 
-// ============================================================================
-// Types
-// ============================================================================
-interface AssignedTeam {
-  id: string;
-  teamName: string;
-  proposalTitle: string;
-  status: 'under_review' | 'approved';
-  assignedDate: string;
-}
+const fetcher = (url: string) => api.get(url).then((r) => r.data);
 
-interface Advisor {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  specialization: string;
-  maxCapacity: number;
-  assignedTeams: AssignedTeam[];
-}
-
-// ============================================================================
-// Mock Data
-// ============================================================================
-const mockAdvisors: Advisor[] = [
-  {
-    id: 'a1',
-    name: 'Dr. Sarah Johnson',
-    email: 's.johnson@university.edu',
-    phone: '+1 (555) 123-4567',
-    specialization: 'Machine Learning & AI',
-    maxCapacity: 4,
-    assignedTeams: [
-      {
-        id: 't3',
-        teamName: 'Team Gamma',
-        proposalTitle: 'Smart Campus Navigation App',
-        status: 'under_review',
-        assignedDate: '2026-01-08',
-      },
-    ],
-  },
-  {
-    id: 'a2',
-    name: 'Prof. Michael Chen',
-    email: 'm.chen@university.edu',
-    phone: '+1 (555) 234-5678',
-    specialization: 'Software Engineering',
-    maxCapacity: 5,
-    assignedTeams: [
-      {
-        id: 't4',
-        teamName: 'Team Delta',
-        proposalTitle: 'Library Management System',
-        status: 'approved',
-        assignedDate: '2026-01-05',
-      },
-      {
-        id: 't6',
-        teamName: 'Team Zeta',
-        proposalTitle: 'E-Learning Platform',
-        status: 'under_review',
-        assignedDate: '2026-01-12',
-      },
-    ],
-  },
-  {
-    id: 'a3',
-    name: 'Dr. Emily Davis',
-    email: 'e.davis@university.edu',
-    phone: '+1 (555) 345-6789',
-    specialization: 'Cybersecurity',
-    maxCapacity: 3,
-    assignedTeams: [
-      {
-        id: 't5',
-        teamName: 'Team Epsilon',
-        proposalTitle: 'Online Exam Proctoring System',
-        status: 'under_review',
-        assignedDate: '2026-01-15',
-      },
-    ],
-  },
-  {
-    id: 'a4',
-    name: 'Prof. David Lee',
-    email: 'd.lee@university.edu',
-    phone: '+1 (555) 456-7890',
-    specialization: 'Data Science',
-    maxCapacity: 4,
-    assignedTeams: [],
-  },
-  {
-    id: 'a5',
-    name: 'Dr. Maria Rodriguez',
-    email: 'm.rodriguez@university.edu',
-    phone: '+1 (555) 567-8901',
-    specialization: 'Web Technologies',
-    maxCapacity: 4,
-    assignedTeams: [
-      {
-        id: 't7',
-        teamName: 'Team Eta',
-        proposalTitle: 'Student Portal Redesign',
-        status: 'approved',
-        assignedDate: '2026-01-03',
-      },
-      {
-        id: 't8',
-        teamName: 'Team Theta',
-        proposalTitle: 'Campus Event App',
-        status: 'under_review',
-        assignedDate: '2026-01-10',
-      },
-      {
-        id: 't9',
-        teamName: 'Team Iota',
-        proposalTitle: 'Online Marketplace for Students',
-        status: 'under_review',
-        assignedDate: '2026-01-14',
-      },
-    ],
-  },
-];
-
-// ============================================================================
-// Helpers
-// ============================================================================
-const getInitials = (name: string) =>
-  name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase();
-
-const getCapacityColor = (current: number, max: number) => {
-  const ratio = current / max;
-  if (ratio >= 1) return 'text-red-600';
-  if (ratio >= 0.75) return 'text-amber-600';
-  return 'text-emerald-600';
+type Teacher = { id: string; name?: string; fullName?: string; email: string; department?: string };
+type Project = {
+  id: string; title: string; status: string;
+  mentorId?: { id: string } | null;
+  studentId?: { name?: string; fullName?: string };
+  createdAt: string;
 };
 
-const getProgressColor = (current: number, max: number) => {
-  const ratio = current / max;
-  if (ratio >= 1) return 'bg-red-500';
-  if (ratio >= 0.75) return 'bg-amber-500';
-  return 'bg-emerald-500';
-};
+function getInitials(name?: string) {
+  if (!name) return '?';
+  return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+}
 
-// ============================================================================
-// Component
-// ============================================================================
 export default function AdvisorsPage() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedAdvisor, setSelectedAdvisor] = useState<Advisor | null>(null);
-  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
+
+  const { data: teachersData, isLoading: loadingTeachers } = useSWR('/users/teachers', fetcher);
+  const { data: projectsData } = useSWR('/projects', fetcher);
+
+  const teachers: Teacher[] = teachersData?.data ?? [];
+  const projects: Project[] = projectsData?.data ?? [];
 
   const stats = useMemo(() => {
-    const totalAdvisors = mockAdvisors.length;
-    const totalCapacity = mockAdvisors.reduce(
-      (sum, a) => sum + a.maxCapacity,
-      0,
-    );
-    const totalAssigned = mockAdvisors.reduce(
-      (sum, a) => sum + a.assignedTeams.length,
-      0,
-    );
-    const availableSlots = totalCapacity - totalAssigned;
-    const availableAdvisors = mockAdvisors.filter(
-      (a) => a.assignedTeams.length < a.maxCapacity,
-    ).length;
+    const assigned = teachers.filter((t) => projects.some((p) => p.mentorId?.id === t.id)).length;
     return {
-      totalAdvisors,
-      totalCapacity,
-      totalAssigned,
-      availableSlots,
-      availableAdvisors,
+      total: teachers.length,
+      assigned,
+      available: teachers.length - assigned,
+      totalProjects: projects.length,
     };
-  }, []);
+  }, [teachers, projects]);
 
-  const filteredAdvisors = useMemo(() => {
-    return mockAdvisors.filter(
-      (advisor) =>
-        advisor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        advisor.specialization
-          .toLowerCase()
-          .includes(searchQuery.toLowerCase()),
-    );
-  }, [searchQuery]);
+  const filtered = useMemo(() =>
+    teachers.filter((t) => {
+      const name = t.fullName ?? t.name ?? '';
+      return (
+        name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (t.department ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.email.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }),
+    [teachers, searchQuery]
+  );
 
-  const handleViewDetails = (advisor: Advisor) => {
-    setSelectedAdvisor(advisor);
-    setShowDetailsDialog(true);
-  };
+  const getAssignedProjects = (teacherId: string) =>
+    projects.filter((p) => p.mentorId?.id === teacherId);
 
   return (
     <DashboardLayout role="admin">
       <div className="space-y-6 animate-in fade-in duration-500">
-        {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-xl">
-                <GraduationCap className="h-6 w-6 text-primary" />
-              </div>
+              <div className="p-2 bg-primary/10 rounded-xl"><GraduationCap className="h-6 w-6 text-primary" /></div>
               Advisors
             </h1>
-            <p className="text-muted-foreground mt-1">
-              Manage advisors and their assigned teams
-            </p>
+            <p className="text-muted-foreground mt-1">Manage faculty advisors and their assigned projects</p>
           </div>
           <Badge variant="outline" className="w-fit text-sm py-1.5 px-3 gap-2">
-            <Building2 className="h-4 w-4" />
-            Computer Science Department
+            <Building2 className="h-4 w-4" />All Departments
           </Badge>
         </div>
 
-        {/* Stats Cards */}
         <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
           <Card className="bg-purple-50/50 border-purple-100">
             <CardHeader className="pb-2">
-              <CardDescription className="text-purple-700 font-medium flex items-center gap-2">
-                <GraduationCap className="h-4 w-4" /> Total Advisors
-              </CardDescription>
-              <CardTitle className="text-3xl text-purple-900">
-                {stats.totalAdvisors}
-              </CardTitle>
+              <CardDescription className="text-purple-700 font-medium flex items-center gap-2"><GraduationCap className="h-4 w-4" /> Total Advisors</CardDescription>
+              <CardTitle className="text-3xl text-purple-900">{stats.total}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-emerald-50/50 border-emerald-100">
             <CardHeader className="pb-2">
-              <CardDescription className="text-emerald-700 font-medium flex items-center gap-2">
-                <CheckCircle className="h-4 w-4" /> Available
-              </CardDescription>
-              <CardTitle className="text-3xl text-emerald-900">
-                {stats.availableAdvisors}
-              </CardTitle>
+              <CardDescription className="text-emerald-700 font-medium flex items-center gap-2"><CheckCircle className="h-4 w-4" /> Available</CardDescription>
+              <CardTitle className="text-3xl text-emerald-900">{stats.available}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-blue-50/50 border-blue-100">
             <CardHeader className="pb-2">
-              <CardDescription className="text-blue-700 font-medium flex items-center gap-2">
-                <Users className="h-4 w-4" /> Total Assigned
-              </CardDescription>
-              <CardTitle className="text-3xl text-blue-900">
-                {stats.totalAssigned}
-              </CardTitle>
+              <CardDescription className="text-blue-700 font-medium flex items-center gap-2"><Users className="h-4 w-4" /> With Projects</CardDescription>
+              <CardTitle className="text-3xl text-blue-900">{stats.assigned}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-amber-50/50 border-amber-100">
             <CardHeader className="pb-2">
-              <CardDescription className="text-amber-700 font-medium flex items-center gap-2">
-                <BookOpen className="h-4 w-4" /> Available Slots
-              </CardDescription>
-              <CardTitle className="text-3xl text-amber-900">
-                {stats.availableSlots}
-              </CardTitle>
+              <CardDescription className="text-amber-700 font-medium flex items-center gap-2"><BookOpen className="h-4 w-4" /> Total Projects</CardDescription>
+              <CardTitle className="text-3xl text-amber-900">{stats.totalProjects}</CardTitle>
             </CardHeader>
           </Card>
         </div>
 
-        {/* Search */}
         <Card>
           <CardHeader>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle className="text-lg">Department Advisors</CardTitle>
-                <CardDescription>
-                  View advisor details and their workload
-                </CardDescription>
+                <CardTitle className="text-lg">Faculty Advisors</CardTitle>
+                <CardDescription>View advisor details and their assigned projects</CardDescription>
               </div>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -318,104 +126,49 @@ export default function AdvisorsPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {filteredAdvisors.length === 0 ? (
+            {loadingTeachers ? (
+              <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+            ) : filtered.length === 0 ? (
               <div className="text-center py-12">
                 <div className="mx-auto h-16 w-16 bg-muted rounded-full flex items-center justify-center mb-4">
                   <GraduationCap className="h-8 w-8 text-muted-foreground" />
                 </div>
-                <h3 className="font-semibold text-lg">No Advisors Found</h3>
-                <p className="text-muted-foreground mt-1">
-                  Try adjusting your search criteria.
-                </p>
+                <h3 className="font-semibold text-lg">{teachers.length === 0 ? 'No Advisors Found' : 'No Results'}</h3>
+                <p className="text-muted-foreground mt-1">{teachers.length === 0 ? 'No faculty members are registered yet.' : 'Try adjusting your search.'}</p>
               </div>
             ) : (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {filteredAdvisors.map((advisor) => {
-                  const capacityRatio =
-                    advisor.assignedTeams.length / advisor.maxCapacity;
-                  const isFull =
-                    advisor.assignedTeams.length >= advisor.maxCapacity;
-
+                {filtered.map((teacher) => {
+                  const assigned = getAssignedProjects(teacher.id);
+                  const name = teacher.fullName ?? teacher.name ?? teacher.email;
                   return (
                     <Card
-                      key={advisor.id}
-                      className={`hover:shadow-md transition-all cursor-pointer hover:border-primary/20 ${
-                        isFull ? 'border-red-100 bg-red-50/20' : ''
-                      }`}
-                      onClick={() => handleViewDetails(advisor)}
+                      key={teacher.id}
+                      className="hover:shadow-md transition-all cursor-pointer hover:border-primary/20"
+                      onClick={() => setSelectedTeacher(teacher)}
                     >
                       <CardContent className="p-4">
                         <div className="flex items-start gap-4">
                           <Avatar className="h-12 w-12">
-                            <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                              {getInitials(advisor.name)}
-                            </AvatarFallback>
+                            <AvatarFallback className="bg-primary/10 text-primary font-semibold">{getInitials(name)}</AvatarFallback>
                           </Avatar>
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-semibold truncate">
-                              {advisor.name}
-                            </h4>
-                            <p className="text-sm text-muted-foreground truncate">
-                              {advisor.specialization}
-                            </p>
+                            <h4 className="font-semibold truncate">{name}</h4>
+                            <p className="text-sm text-muted-foreground truncate">{teacher.department ?? 'Faculty'}</p>
                           </div>
-                          {isFull ? (
-                            <Badge
-                              variant="outline"
-                              className="bg-red-100 text-red-700 border-red-200"
-                            >
-                              Full
-                            </Badge>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="bg-emerald-100 text-emerald-700 border-emerald-200"
-                            >
-                              Available
-                            </Badge>
-                          )}
-                        </div>
-
-                        <div className="mt-4 space-y-2">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">
-                              Workload
-                            </span>
-                            <span
-                              className={`font-semibold ${getCapacityColor(advisor.assignedTeams.length, advisor.maxCapacity)}`}
-                            >
-                              {advisor.assignedTeams.length} /{' '}
-                              {advisor.maxCapacity} teams
-                            </span>
-                          </div>
-                          <div className="relative h-2 rounded-full bg-muted overflow-hidden">
-                            <div
-                              className={`absolute left-0 top-0 h-full transition-all ${getProgressColor(advisor.assignedTeams.length, advisor.maxCapacity)}`}
-                              style={{
-                                width: `${Math.min(capacityRatio * 100, 100)}%`,
-                              }}
-                            />
-                          </div>
+                          <Badge variant="outline" className={assigned.length > 0 ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}>
+                            {assigned.length > 0 ? `${assigned.length} assigned` : 'Available'}
+                          </Badge>
                         </div>
 
                         <div className="mt-4 flex items-center gap-4 text-sm text-muted-foreground">
                           <div className="flex items-center gap-1">
                             <Eye className="h-3.5 w-3.5" />
-                            {
-                              advisor.assignedTeams.filter(
-                                (t) => t.status === 'under_review',
-                              ).length
-                            }{' '}
-                            reviewing
+                            {assigned.filter((p) => p.status === 'under_review' || p.status === 'submitted').length} reviewing
                           </div>
                           <div className="flex items-center gap-1">
                             <CheckCircle className="h-3.5 w-3.5" />
-                            {
-                              advisor.assignedTeams.filter(
-                                (t) => t.status === 'approved',
-                              ).length
-                            }{' '}
-                            approved
+                            {assigned.filter((p) => p.status === 'approved').length} approved
                           </div>
                         </div>
                       </CardContent>
@@ -428,133 +181,71 @@ export default function AdvisorsPage() {
         </Card>
       </div>
 
-      {/* Advisor Details Dialog */}
-      <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
+      <Dialog open={!!selectedTeacher} onOpenChange={(o) => { if (!o) setSelectedTeacher(null); }}>
         <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <GraduationCap className="h-5 w-5 text-primary" />
-              Advisor Details
+              <GraduationCap className="h-5 w-5 text-primary" />Advisor Details
             </DialogTitle>
-            <DialogDescription>
-              Contact information and assigned teams
-            </DialogDescription>
+            <DialogDescription>Contact information and assigned projects</DialogDescription>
           </DialogHeader>
 
-          {selectedAdvisor && (
-            <div className="space-y-6 py-4">
-              {/* Advisor Info */}
-              <div className="flex items-center gap-4">
-                <Avatar className="h-16 w-16">
-                  <AvatarFallback className="bg-primary/10 text-primary text-lg font-semibold">
-                    {getInitials(selectedAdvisor.name)}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <h3 className="font-semibold text-lg">
-                    {selectedAdvisor.name}
-                  </h3>
-                  <Badge variant="secondary">
-                    {selectedAdvisor.specialization}
-                  </Badge>
+          {selectedTeacher && (() => {
+            const name = selectedTeacher.fullName ?? selectedTeacher.name ?? selectedTeacher.email;
+            const assigned = getAssignedProjects(selectedTeacher.id);
+            return (
+              <div className="space-y-6 py-4">
+                <div className="flex items-center gap-4">
+                  <Avatar className="h-16 w-16">
+                    <AvatarFallback className="bg-primary/10 text-primary text-lg font-semibold">{getInitials(name)}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <h3 className="font-semibold text-lg">{name}</h3>
+                    {selectedTeacher.department && <Badge variant="secondary">{selectedTeacher.department}</Badge>}
+                  </div>
                 </div>
-              </div>
 
-              {/* Contact Info */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-medium text-muted-foreground">
-                  Contact Information
-                </h4>
                 <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-muted-foreground">Contact</h4>
                   <div className="flex items-center gap-3 p-3 rounded-lg border">
                     <Mail className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{selectedAdvisor.email}</span>
-                  </div>
-                  <div className="flex items-center gap-3 p-3 rounded-lg border">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{selectedAdvisor.phone}</span>
+                    <span className="text-sm">{selectedTeacher.email}</span>
                   </div>
                 </div>
-              </div>
 
-              {/* Workload */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-medium text-muted-foreground">
-                  Current Workload
-                </h4>
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm">Capacity</span>
-                      <span
-                        className={`font-semibold ${getCapacityColor(selectedAdvisor.assignedTeams.length, selectedAdvisor.maxCapacity)}`}
-                      >
-                        {selectedAdvisor.assignedTeams.length} /{' '}
-                        {selectedAdvisor.maxCapacity}
-                      </span>
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-muted-foreground">Assigned Projects ({assigned.length})</h4>
+                  {assigned.length === 0 ? (
+                    <div className="p-4 rounded-xl border border-dashed text-center">
+                      <Users className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">No projects assigned yet</p>
                     </div>
-                    <div className="relative h-3 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className={`absolute left-0 top-0 h-full transition-all ${getProgressColor(selectedAdvisor.assignedTeams.length, selectedAdvisor.maxCapacity)}`}
-                        style={{
-                          width: `${Math.min((selectedAdvisor.assignedTeams.length / selectedAdvisor.maxCapacity) * 100, 100)}%`,
-                        }}
-                      />
+                  ) : (
+                    <div className="space-y-2">
+                      {assigned.map((p) => {
+                        const studentName = p.studentId?.fullName ?? p.studentId?.name ?? '—';
+                        return (
+                          <div key={p.id} className="flex items-center justify-between p-3 rounded-lg border">
+                            <div>
+                              <p className="font-medium text-sm line-clamp-1">{p.title}</p>
+                              <p className="text-xs text-muted-foreground">{studentName}</p>
+                            </div>
+                            <Badge variant="outline" className={
+                              p.status === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                              p.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
+                              'bg-blue-100 text-blue-700 border-blue-200'
+                            }>
+                              {p.status.replace('_', ' ')}
+                            </Badge>
+                          </div>
+                        );
+                      })}
                     </div>
-                  </CardContent>
-                </Card>
+                  )}
+                </div>
               </div>
-
-              {/* Assigned Teams */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-medium text-muted-foreground">
-                  Assigned Teams ({selectedAdvisor.assignedTeams.length})
-                </h4>
-                {selectedAdvisor.assignedTeams.length === 0 ? (
-                  <div className="p-4 rounded-xl border border-dashed text-center">
-                    <Users className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">
-                      No teams assigned yet
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {selectedAdvisor.assignedTeams.map((team) => (
-                      <div
-                        key={team.id}
-                        className="flex items-center justify-between p-3 rounded-lg border"
-                      >
-                        <div>
-                          <p className="font-medium text-sm">{team.teamName}</p>
-                          <p className="text-xs text-muted-foreground truncate max-w-[200px]">
-                            {team.proposalTitle}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          <Badge
-                            variant="outline"
-                            className={
-                              team.status === 'approved'
-                                ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                                : 'bg-blue-100 text-blue-700 border-blue-200'
-                            }
-                          >
-                            {team.status === 'approved'
-                              ? 'Approved'
-                              : 'Reviewing'}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {team.assignedDate}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </DashboardLayout>

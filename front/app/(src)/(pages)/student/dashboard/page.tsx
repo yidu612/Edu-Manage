@@ -1,5 +1,6 @@
 "use client";
 
+import useSWR from "swr";
 import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/app/(src)/components/layout/DashboardLayout";
 import { StatsCard } from "@/app/(src)/components/dashboard/StatsCard";
@@ -7,58 +8,67 @@ import { ProposalCard } from "@/app/(src)/components/dashboard/ProposalCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  FileText,
-  CheckCircle,
-  Clock,
-  AlertCircle,
-  Plus,
-  Bell,
-  ArrowRight,
-} from "lucide-react";
+import { FileText, CheckCircle, Clock, AlertCircle, Plus, Bell, ArrowRight } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
+import api from "@/lib/api";
 
-const stats = [
-  { title: "Total Proposals", value: 4, icon: FileText, description: "All time submissions" },
-  { title: "Approved", value: 2, icon: CheckCircle, trend: { value: 50, isPositive: true } },
-  { title: "Pending Review", value: 1, icon: Clock, description: "Awaiting feedback" },
-  { title: "Needs Revision", value: 1, icon: AlertCircle, description: "Action required" },
-];
+const fetcher = (url: string) => api.get(url).then((r) => r.data);
 
-const recentProposals = [
-  {
-    id: "1",
-    title: "AI-Powered Analytics",
-    description: "Machine learning system for performance prediction.",
-    status: "approved" as const,
-    date: "Dec 15, 2024",
-    teamSize: 4,
-    department: "Computer Science",
-  },
-];
+type BackendStatus = "draft" | "pending" | "approved" | "rejected";
+
+function mapStatus(s: string): "draft" | "under_review" | "approved" | "rejected" {
+  if (s === "approved") return "approved";
+  if (s === "rejected") return "rejected";
+  if (s === "draft") return "draft";
+  return "under_review";
+}
+
+function formatTime(ts: string) {
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return ts;
+  const diff = Date.now() - d.getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { user } = useAuth();
+
+  const { data: propData } = useSWR("/proposals", fetcher);
+  const { data: notifData } = useSWR("/notifications", fetcher);
+
+  const proposals: Array<{ id: string; title: string; status: BackendStatus; department?: string; abstract?: string; teacher?: { name?: string }; createdAt: string }> =
+    propData?.data ?? [];
+
+  const notifications: Array<{ id: string; notificationType: string; message: string; timestamp: string; isRead: boolean }> =
+    notifData?.data ?? [];
+
+  const stats = [
+    { title: "Total Proposals", value: proposals.length, icon: FileText, description: "All time submissions" },
+    { title: "Approved", value: proposals.filter((p) => p.status === "approved").length, icon: CheckCircle, trend: { value: proposals.length ? Math.round((proposals.filter((p) => p.status === "approved").length / proposals.length) * 100) : 0, isPositive: true } },
+    { title: "Pending Review", value: proposals.filter((p) => p.status === "pending").length, icon: Clock, description: "Awaiting feedback" },
+    { title: "Drafts", value: proposals.filter((p) => p.status === "draft").length, icon: AlertCircle, description: "Not yet submitted" },
+  ];
+
+  const recent = proposals.slice(0, 3);
+  const unread = notifications.filter((n) => !n.isRead);
 
   return (
     <DashboardLayout role="student">
-      {/* 
-         1. Added a wrapper with max-width to prevent stretching on huge screens.
-         2. Added standard padding (p-4 for mobile, p-8 for desktop).
-         3. Used space-y-8 to create consistent vertical flow.
-      */}
       <div className="flex-1 space-y-8 p-4 pt-6 md:p-8 max-w-7xl mx-auto">
-
-        {/* Header Section */}
         <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 animate-in fade-in slide-in-from-bottom-4">
           <div className="space-y-1">
             <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
-              Welcome back, John
+              Welcome back, {user?.name ?? "Student"}
             </h1>
             <p className="text-sm text-muted-foreground md:text-base">
               Here&apos;s an overview of your project proposals.
             </p>
           </div>
-
           <Button
             className="w-full sm:w-auto rounded-full shadow-lg shadow-primary/20"
             onClick={() => router.push("/student/dashboard/proposals/new")}
@@ -68,17 +78,13 @@ export default function DashboardPage() {
           </Button>
         </div>
 
-        {/* Stats Grid - Adjusted gap for better spacing */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {stats.map((stat) => (
             <StatsCard key={stat.title} {...stat} />
           ))}
         </div>
 
-        {/* Main Content Layout */}
         <div className="grid gap-6 lg:grid-cols-7">
-
-          {/* Left Column: Proposals (Takes up 4/7 or roughly 60% on desktop) */}
           <div className="space-y-6 lg:col-span-4 xl:col-span-5">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold tracking-tight">Recent Proposals</h2>
@@ -92,21 +98,31 @@ export default function DashboardPage() {
                 <ArrowRight className="ml-1 h-4 w-4" />
               </Button>
             </div>
-
             <div className="grid gap-4">
-              {recentProposals.map((proposal) => (
-                <ProposalCard key={proposal.id} {...proposal} />
-              ))}
-              {/* Added a placeholder if empty to prevent layout collapse */}
-              {recentProposals.length === 0 && (
+              {recent.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground border border-dashed rounded-lg">
-                  No proposals found.
+                  No proposals yet.{" "}
+                  <button onClick={() => router.push("/student/dashboard/proposals/new")} className="underline">
+                    Create one
+                  </button>
                 </div>
+              ) : (
+                recent.map((p) => (
+                  <ProposalCard
+                    key={p.id}
+                    id={p.id}
+                    title={p.title}
+                    description={p.abstract}
+                    status={mapStatus(p.status)}
+                    department={p.department}
+                    supervisor={p.teacher?.name}
+                    date={new Date(p.createdAt).toLocaleDateString()}
+                  />
+                ))
               )}
             </div>
           </div>
 
-          {/* Right Column: Notifications (Takes up 3/7 on desktop, stacks on mobile) */}
           <div className="space-y-6 lg:col-span-3 xl:col-span-2">
             <Card className="h-full border shadow-sm">
               <CardHeader className="pb-4">
@@ -115,41 +131,41 @@ export default function DashboardPage() {
                     <Bell className="h-4 w-4 text-primary" />
                     Notifications
                   </CardTitle>
-                  <Badge variant="secondary" className="text-xs font-normal">
-                    3 new
-                  </Badge>
+                  {unread.length > 0 && (
+                    <Badge variant="secondary" className="text-xs font-normal">
+                      {unread.length} new
+                    </Badge>
+                  )}
                 </div>
-                <CardDescription>
-                  Latest updates on your submissions
-                </CardDescription>
+                <CardDescription>Latest updates on your submissions</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Added dummy items to make the card feel less empty/weird */}
                 <div className="grid gap-4">
-                  {[1, 2, 3].map((_, i) => (
-                    <div key={i} className="flex items-start gap-3 text-sm pb-3 border-b last:border-0 last:pb-0">
-                      <div className="h-2 w-2 mt-1.5 rounded-full bg-blue-500 shrink-0" />
+                  {notifications.slice(0, 5).map((n) => (
+                    <div key={n.id} className="flex items-start gap-3 text-sm pb-3 border-b last:border-0 last:pb-0">
+                      <div className={`h-2 w-2 mt-1.5 rounded-full shrink-0 ${n.isRead ? "bg-muted-foreground" : "bg-blue-500"}`} />
                       <div className="grid gap-1">
-                        <p className="font-medium leading-none">Proposal Approved</p>
-                        <p className="text-xs text-muted-foreground">Your proposal was approved by the coordinator.</p>
-                        <p className="text-[10px] text-muted-foreground">2 hours ago</p>
+                        <p className="font-medium leading-none capitalize">{n.notificationType}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2">{n.message}</p>
+                        <p className="text-[10px] text-muted-foreground">{formatTime(n.timestamp)}</p>
                       </div>
                     </div>
                   ))}
+                  {notifications.length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-4">No notifications yet.</p>
+                  )}
                 </div>
-
                 <Button
                   variant="outline"
                   size="sm"
                   className="w-full mt-2"
-                  onClick={() => router.push("/student/dashboard/notifications")}
+                  onClick={() => router.push("/notifications")}
                 >
                   View all notifications
                 </Button>
               </CardContent>
             </Card>
           </div>
-
         </div>
       </div>
     </DashboardLayout>

@@ -4,307 +4,174 @@ import Proposal from "../models/Proposal.js";
 import User from "../models/user.model.js";
 import mongoose from "mongoose";
 
-// Get all proposals for the logged-in student
-export const getProposal = async (req, res) => {
+// Get proposals for the current user (student → own; teacher → assigned; admin → all)
+export const getAllProposals = async (req, res) => {
   try {
-    // Find all proposals where student ID matches the logged-in user's ID
-    const proposals = await Proposal.find({ student: req.user._id })
+    const filter = {};
+    if (req.user.role === "student") filter.student = req.user._id;
+    else if (req.user.role === "teacher") filter.teacher = req.user._id;
+
+    const proposals = await Proposal.find(filter)
       .populate("student", "fullName email department")
       .populate("teacher", "fullName email department")
-      .sort({ createdAt: -1 }); // Sort by newest first
+      .sort({ createdAt: -1 });
 
-    res.status(200).json({
-      success: true,
-      count: proposals.length,
-      data: proposals,
-    });
+    res.status(200).json({ success: true, count: proposals.length, data: proposals });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error retrieving proposals",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Error retrieving proposals", error: error.message });
   }
 };
 
-// Update a proposal
-export const updateProposal = async (req, res) => {
+// Get a single proposal by ID
+export const getProposal = async (req, res) => {
   try {
-    const proposal = await Proposal.findOne({ id: req.params.id });
-
-    if (!proposal) {
-      return res.status(404).json({
-        success: false,
-        message: "Proposal not found",
-      });
-    }
-
-    // Only the student who created the proposal can update it
-    if (proposal.student.toString() !== req.user._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: "You are not authorized to update this proposal",
-      });
-    }
-
-    // Don't allow status changes through this endpoint
-    delete req.body.status;
-    delete req.body.teacher;
-    delete req.body.submissionDetails;
-
-    const updatedProposal = await Proposal.findOneAndUpdate(
-      { id: req.params.id },
-      req.body,
-      { new: true, runValidators: true }
-    )
+    const proposal = await Proposal.findById(req.params.id)
       .populate("student", "fullName email department")
       .populate("teacher", "fullName email department")
-      .populate("submissionDetails.submittedTo", "fullName email department");
+      .populate("feedbackList.teacher", "fullName email");
 
-    res.status(200).json({
-      success: true,
-      message: "Proposal updated successfully",
-      data: updatedProposal,
-    });
+    if (!proposal) return res.status(404).json({ success: false, message: "Proposal not found" });
+    res.status(200).json({ success: true, data: proposal });
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: "Error updating proposal",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Error retrieving proposal", error: error.message });
+  }
+};
+
+// Update a proposal (student updates own draft)
+export const updateProposal = async (req, res) => {
+  try {
+    const proposal = await Proposal.findById(req.params.id);
+    if (!proposal) return res.status(404).json({ success: false, message: "Proposal not found" });
+
+    if (req.user.role === "student" && proposal.student.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: "Not authorized" });
+    }
+
+    // Block status changes through this endpoint (use /review instead)
+    delete req.body.status;
+    delete req.body.student;
+
+    const updated = await Proposal.findByIdAndUpdate(req.params.id, req.body, {
+      new: true, runValidators: true
+    })
+      .populate("student", "fullName email department")
+      .populate("teacher", "fullName email department");
+
+    res.status(200).json({ success: true, message: "Proposal updated", data: updated });
+  } catch (error) {
+    res.status(400).json({ success: false, message: "Error updating proposal", error: error.message });
   }
 };
 
 // Delete a proposal
 export const deleteProposal = async (req, res) => {
   try {
-    const proposal = await Proposal.findOne({ id: req.params.id });
+    const proposal = await Proposal.findById(req.params.id);
+    if (!proposal) return res.status(404).json({ success: false, message: "Proposal not found" });
 
-    if (!proposal) {
-      return res.status(404).json({
-        success: false,
-        message: "Proposal not found",
-      });
-    }
-
-    // Only the student who created the proposal can delete it
     if (proposal.student.toString() !== req.user._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: "You are not authorized to delete this proposal",
-      });
+      return res.status(403).json({ success: false, message: "Not authorized" });
     }
 
     await proposal.deleteOne();
-
-    res.status(200).json({
-      success: true,
-      message: "Proposal deleted successfully",
-    });
+    res.status(200).json({ success: true, message: "Proposal deleted" });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error deleting proposal",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Error deleting proposal", error: error.message });
   }
 };
 
-// Get all proposals
-export const getAllProposals = async (req, res) => {
-  try {
-    let query = {};
-
-    // If user is a student, only show their proposals
-    if (req.user.role === "student") {
-      query.student = req.user._id;
-    }
-    // If user is a teacher, show proposals assigned to them
-    else if (req.user.role === "teacher") {
-      query.teacher = req.user._id;
-    }
-
-    const proposals = await Proposal.find(query)
-      .populate("student", "fullName email department")
-      .populate("teacher", "fullName email department")
-      .sort({ createdAt: -1 });
-
-    res.status(200).json({
-      success: true,
-      count: proposals.length,
-      data: proposals,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error retrieving proposals",
-      error: error.message,
-    });
-  }
-};
-
-// Middleware to handle file upload
+// Middleware — multer + optional Cloudinary upload
 export const uploadProposalFile = (req, res, next) => {
   upload.single("proposalFile")(req, res, (err) => {
     if (err) return next(err);
-    
-    // Configure upload options for documents
-    const uploadOptions = {
-      resource_type: "raw", // This allows any file type
-      allowed_formats: ["pdf", "doc", "docx", "zip", "txt", "rtf"],
-      format: "zip" // Force format for ZIP files
-    };
+    if (!req.file) return next(); // no file attached — proceed without it
 
-    cloudinary.uploader.upload(req.file.path, uploadOptions, (err, result) => {
-      if (err) {
-        console.error('Cloudinary upload error:', err);
-        return res.status(500).json({
-          success: false,
-          message: "File upload failed",
-          error: err.message
-        });
+    cloudinary.uploader.upload(req.file.path, { resource_type: "raw" }, (uploadErr, result) => {
+      if (uploadErr) {
+        console.error("Cloudinary upload error:", uploadErr.message);
+        return next(); // still proceed even if cloud upload fails
       }
-      // Preserve original file info and add Cloudinary data
-      req.file = {
-        ...req.file,
-        secure_url: result.secure_url,
-        url: result.url,
-        public_id: result.public_id
-      };
+      req.file = { ...req.file, secure_url: result.secure_url, url: result.url };
       next();
     });
   });
 };
 
-// Submit a proposal for review
+// Submit a new proposal
 export const submitProposal = async (req, res) => {
   try {
-    const { title, teacherId } = req.body;
+    const { title, teacherId, abstract, objectives, methodology, department, expectedOutcomes } = req.body;
 
-    // Validate required fields
-    if (!title) {
-      return res.status(400).json({
-        success: false,
-        message: "Title is required",
-      });
+    if (!title) return res.status(400).json({ success: false, message: "Title is required" });
+
+    if (teacherId) {
+      if (!mongoose.Types.ObjectId.isValid(teacherId)) {
+        return res.status(400).json({ success: false, message: "Invalid teacher ID" });
+      }
+      const teacher = await User.findOne({ _id: teacherId, role: "teacher" });
+      if (!teacher) return res.status(404).json({ success: false, message: "Teacher not found" });
     }
 
-    if (!teacherId) {
-      return res.status(400).json({
-        success: false,
-        message: "Teacher ID is required",
-      });
-    }
+    const attachments = req.file
+      ? [{ name: req.file.originalname, url: req.file.secure_url || req.file.url || req.file.path, type: req.file.mimetype, size: req.file.size || 0 }]
+      : [];
 
-    // Validate teacher ID format
-    if (!mongoose.Types.ObjectId.isValid(teacherId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid teacher ID format",
-      });
-    }
-
-    // Check if file was uploaded
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: "No file uploaded. Please ensure you're sending the file as 'proposalFile' in form-data",
-      });
-    }
-
-    // Validate file upload response
-    if (!req.file.secure_url && !req.file.url && !req.file.path) {
-      console.error('File upload failed - invalid response:', req.file);
-      return res.status(500).json({
-        success: false,
-        message: "File upload failed - please try again",
-        details: "No file URL received from upload service"
-      });
-    }
-
-    // Verify the teacher exists and is actually a teacher
-    const teacher = await User.findOne({
-      _id: teacherId,
-      role: "teacher",
-    });
-
-    if (!teacher) {
-      return res.status(404).json({
-        success: false,
-        message: "Teacher not found or is not a teacher",
-      });
-    }
-
-    // Create attachment object
-    const attachment = {
-      name: req.file.originalname,
-      url: req.file.secure_url || req.file.url || req.file.path,
-      type: req.file.mimetype,
-      size: req.file.size || 0
-    };
-
-    // Create new proposal
     const proposal = new Proposal({
-      title,
+      title, abstract, objectives, methodology, department, expectedOutcomes,
       student: req.user._id,
-      teacher: teacherId,
+      teacher: teacherId || undefined,
       status: "pending",
-      attachments: [attachment],
+      attachments,
     });
 
-    const savedProposal = await proposal.save();
-
-    // Populate student and teacher details
-    const populatedProposal = await Proposal.findById(savedProposal._id)
+    const saved = await proposal.save();
+    const populated = await Proposal.findById(saved._id)
       .populate("student", "fullName email department")
       .populate("teacher", "fullName email department");
 
-    res.status(201).json({
-      success: true,
-      message: "Proposal submitted successfully",
-      data: populatedProposal,
-    });
+    res.status(201).json({ success: true, message: "Proposal submitted", data: populated });
   } catch (error) {
-    // Handle multer errors
-    if (error.name === "MulterError") {
-      if (error.code === "LIMIT_FILE_SIZE") {
-        return res.status(400).json({
-          success: false,
-          message: "File size too large. Maximum size is 5MB",
-        });
-      }
-      return res.status(400).json({
-        success: false,
-        message: `File upload error: ${error.message}`,
+    res.status(500).json({ success: false, message: "Error submitting proposal", error: error.message });
+  }
+};
+
+// Teacher/admin: approve or reject a proposal
+export const reviewProposal = async (req, res) => {
+  try {
+    const proposal = await Proposal.findById(req.params.id);
+    if (!proposal) return res.status(404).json({ success: false, message: "Proposal not found" });
+
+    const { status, comment } = req.body;
+    const valid = ['approved', 'rejected', 'pending'];
+    if (!status || !valid.includes(status)) {
+      return res.status(400).json({ success: false, message: "Valid status required: approved, rejected, pending" });
+    }
+
+    proposal.status = status;
+
+    if (comment) {
+      proposal.feedbackList.push({
+        teacher: req.user._id,
+        projectTitle: proposal.title,
+        status,
+        sections: [{
+          title: "Review Decision",
+          rating: status === 'approved' ? 5 : 2,
+          strengths: comment,
+          areasForImprovement: status === 'rejected' ? comment : "N/A",
+          comments: comment,
+        }],
       });
     }
 
-    // Handle validation errors
-    if (error.name === "ValidationError") {
-      const validationErrors = Object.values(error.errors)
-        .map((err) => err.message)
-        .join(", ");
-      return res.status(400).json({
-        success: false,
-        message: `Validation error: ${validationErrors}`,
-      });
-    }
+    await proposal.save();
+    const populated = await Proposal.findById(proposal._id)
+      .populate("student", "fullName email")
+      .populate("teacher", "fullName email")
+      .populate("feedbackList.teacher", "fullName email");
 
-    // Handle Cloudinary errors
-    if (error.name === "CloudinaryError") {
-      return res.status(500).json({
-        success: false,
-        message: "File upload service error",
-        details: error.message
-      });
-    }
-
-    // Handle other errors
-    res.status(500).json({
-      success: false,
-      message: "Error submitting proposal",
-      error: error.message,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    res.json({ success: true, data: populated });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
   }
 };

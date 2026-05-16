@@ -124,7 +124,7 @@ export function ProposalCard({
           
           {/* Next.js Link uses 'href' instead of 'to' */}
           <Button variant="ghost" size="sm" className="gap-1.5" asChild>
-            <Link href={`/student/proposals/${id}`}>
+            <Link href={`/student/dashboard/proposals/${id}`}>
               View
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
