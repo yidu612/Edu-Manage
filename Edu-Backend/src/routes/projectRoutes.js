@@ -10,6 +10,7 @@ import {
 } from '../controllers/projectController.js';
 import {
   getDocumentation,
+  getDocumentationHistory,
   addDocumentation,
   deleteDocumentation,
   updateDocumentationStatus,
@@ -36,6 +37,7 @@ router.post('/:id/milestones', createMilestone);
 
 // Documentation
 router.get('/:id/documentation',                      getDocumentation);
+router.get('/:id/documentation/history',              getDocumentationHistory);
 router.post('/:id/documentation', uploadDocFile,      addDocumentation);
 router.delete('/:id/documentation/:docId',            deleteDocumentation);
 router.put('/:id/documentation/:docId/status',        updateDocumentationStatus);

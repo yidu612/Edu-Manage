@@ -3,12 +3,25 @@ import upload from '../middleware/multer.js';
 import Documentation from '../models/Documentation.js';
 import Project from '../models/Project.js';
 
-// GET /api/projects/:id/documentation
+// GET /api/projects/:id/documentation — latest version of each doc type only
 export const getDocumentation = async (req, res) => {
+  try {
+    const docs = await Documentation.find({ projectId: req.params.id, isLatest: true })
+      .populate('uploadedBy', 'fullName')
+      .sort({ createdAt: -1 });
+    res.json({ success: true, data: docs });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// GET /api/projects/:id/documentation/history — full version history
+export const getDocumentationHistory = async (req, res) => {
   try {
     const docs = await Documentation.find({ projectId: req.params.id })
       .populate('uploadedBy', 'fullName')
-      .sort({ createdAt: -1 });
+      .populate('replacedBy', 'name version')
+      .sort({ documentType: 1, version: -1 });
     res.json({ success: true, data: docs });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -59,14 +72,32 @@ export const addDocumentation = async (req, res) => {
       return res.status(400).json({ success: false, message: 'File or URL required' });
     }
 
-    const doc = await Documentation.create({
+    // Find the current latest version of the same document type for this project
+    const prevDoc = await Documentation.findOne({
       projectId: req.params.id,
       documentType: documentType || 'other',
-      name: name || req.file?.originalname || 'Document',
-      url: fileUrl,
-      size: req.file?.size || 0,
-      uploadedBy: req.user._id,
+      isLatest: true,
     });
+
+    const nextVersion = prevDoc ? prevDoc.version + 1 : 1;
+
+    const doc = await Documentation.create({
+      projectId:    req.params.id,
+      documentType: documentType || 'other',
+      name:         name || req.file?.originalname || 'Document',
+      url:          fileUrl,
+      size:         req.file?.size || 0,
+      uploadedBy:   req.user._id,
+      version:      nextVersion,
+      isLatest:     true,
+    });
+
+    // Mark the previous version as superseded
+    if (prevDoc) {
+      prevDoc.isLatest   = false;
+      prevDoc.replacedBy = doc._id;
+      await prevDoc.save();
+    }
 
     res.status(201).json({ success: true, data: doc });
   } catch (err) {

@@ -9,6 +9,13 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   Upload,
   FileText,
   FileCode,
@@ -21,6 +28,7 @@ import {
   ExternalLink,
   Loader2,
   AlertCircle,
+  History,
 } from 'lucide-react';
 import { useToast } from '@/app/(src)/hooks/use-toast';
 import api from '@/lib/api';
@@ -35,12 +43,15 @@ type Project = {
 };
 
 type Doc = {
+  _id: string;
   id: string;
   documentType: string;
   name: string;
   url: string;
   size: number;
   status: 'pending' | 'approved' | 'rejected';
+  version: number;
+  isLatest: boolean;
   createdAt: string;
 };
 
@@ -72,6 +83,7 @@ export default function DocumentationPage() {
   const [isSavingLinks, setIsSavingLinks] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   // Fetch student's projects
   const { data: projectsData, isLoading: loadingProjects } = useSWR('/projects', fetcher);
@@ -80,8 +92,11 @@ export default function DocumentationPage() {
 
   // Fetch documentation for the active project
   const docsKey = project ? `/projects/${project.id}/documentation` : null;
+  const historyKey = project ? `/projects/${project.id}/documentation/history` : null;
   const { data: docsData, isLoading: loadingDocs } = useSWR(docsKey, fetcher);
+  const { data: historyData } = useSWR(historyKey, fetcher);
   const docs: Doc[] = docsData?.data ?? [];
+  const historyDocs: Doc[] = historyData?.data ?? [];
 
   // Sync link fields from fetched docs
   const codeLinkDoc = docs.find((d) => d.documentType === 'code_link');
@@ -176,11 +191,59 @@ export default function DocumentationPage() {
     <DashboardLayout role="student">
       <div className="space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Project Documentation</h1>
-          <p className="text-muted-foreground">
-            Upload documents and link your code repository for your project
-          </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Project Documentation</h1>
+            <p className="text-muted-foreground">
+              Upload documents and link your code repository for your project
+            </p>
+          </div>
+          <Button variant="outline" className="gap-2 shrink-0" onClick={() => setHistoryOpen(true)}>
+            <History className="h-4 w-4" /> Version History
+          </Button>
+          <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+            <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <History className="h-5 w-5" /> Document Version History
+                </DialogTitle>
+                <DialogDescription>All uploaded versions, newest first.</DialogDescription>
+              </DialogHeader>
+              <div className="mt-2 space-y-3">
+                {historyDocs.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">No history yet.</p>
+                ) : (
+                  historyDocs.map((doc) => (
+                    <div
+                      key={doc._id ?? doc.id}
+                      className={`flex items-start justify-between gap-3 p-3 rounded-lg border ${doc.isLatest ? 'border-primary/30 bg-primary/5' : 'border-gray-100 bg-muted/30'}`}
+                    >
+                      <div className="flex items-start gap-3 min-w-0">
+                        {docTypeIcon(doc.documentType)}
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm truncate">{doc.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            v{doc.version} • {new Date(doc.createdAt).toLocaleDateString()}
+                          </p>
+                          <p className="text-xs capitalize text-muted-foreground">{doc.documentType.replace('_', ' ')}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        {doc.isLatest && (
+                          <Badge className="text-[10px] bg-primary/10 text-primary border-0">Latest</Badge>
+                        )}
+                        <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
+                          <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                            <Download className="h-3.5 w-3.5" />
+                          </a>
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* Project Info */}
@@ -263,13 +326,13 @@ export default function DocumentationPage() {
               ) : (
                 <div className="space-y-3">
                   {fileDocs.map((doc) => (
-                    <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div key={doc._id ?? doc.id} className="flex items-center justify-between p-3 border rounded-lg">
                       <div className="flex items-center gap-3 min-w-0">
                         {docTypeIcon(doc.documentType)}
                         <div className="min-w-0">
                           <p className="font-medium text-sm truncate">{doc.name}</p>
                           <p className="text-xs text-muted-foreground">
-                            {formatSize(doc.size)} • {new Date(doc.createdAt).toLocaleDateString()}
+                            v{doc.version ?? 1} • {formatSize(doc.size)} • {new Date(doc.createdAt).toLocaleDateString()}
                           </p>
                         </div>
                       </div>
@@ -295,10 +358,10 @@ export default function DocumentationPage() {
                           variant="ghost"
                           size="icon"
                           className="text-destructive"
-                          onClick={() => handleDelete(doc.id)}
-                          disabled={deletingId === doc.id}
+                          onClick={() => handleDelete(doc._id ?? doc.id)}
+                          disabled={deletingId === (doc._id ?? doc.id)}
                         >
-                          {deletingId === doc.id
+                          {deletingId === (doc._id ?? doc.id)
                             ? <Loader2 className="h-4 w-4 animate-spin" />
                             : <Trash2 className="h-4 w-4" />
                           }
