@@ -70,10 +70,14 @@ export const signUp = async (req, res) => {
       userData.imageUrl = req.file.secure_url;
     }
 
-    // Add role-specific fields
+    // Save department for any role that provides it
+    if (otherFields.department) {
+      userData.department = otherFields.department;
+    }
+
+    // Add student-specific fields
     if (role === ROLES.STUDENT) {
       Object.assign(userData, {
-        department: otherFields.department,
         bio: otherFields.bio,
         phone: otherFields.phone,
         location: otherFields.location,
