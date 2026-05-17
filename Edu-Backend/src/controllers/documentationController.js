@@ -2,6 +2,8 @@ import cloudinary from '../config/cloudinary.js';
 import upload from '../middleware/multer.js';
 import Documentation from '../models/Documentation.js';
 import Project from '../models/Project.js';
+import { extractText, checkAllProjects } from '../utils/similarity.js';
+import { notify } from '../utils/notify.js';
 
 // GET /api/projects/:id/documentation — latest version of each doc type only
 export const getDocumentation = async (req, res) => {
@@ -100,6 +102,33 @@ export const addDocumentation = async (req, res) => {
     }
 
     res.status(201).json({ success: true, data: doc });
+
+    // Async similarity check — runs after response is sent, does not block
+    if (documentType === 'report' && fileUrl) {
+      setImmediate(async () => {
+        try {
+          const text = await extractText(fileUrl);
+          const { maxScore, matchedProjectId } = await checkAllProjects(text, req.params.id);
+          await Project.findByIdAndUpdate(req.params.id, {
+            similarityScore: maxScore,
+            similarityMatchedProject: matchedProjectId ?? null,
+          });
+          if (maxScore > 40) {
+            const proj = await Project.findById(req.params.id).select('studentId');
+            if (proj?.studentId) {
+              await notify({
+                recipientId:      proj.studentId,
+                notificationType: 'system',
+                message:          `Your report has ${maxScore}% similarity with an existing submission. Please review your work.`,
+                priority:         'high',
+              });
+            }
+          }
+        } catch (err) {
+          console.error('Similarity check error:', err.message);
+        }
+      });
+    }
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }

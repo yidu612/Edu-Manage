@@ -25,11 +25,28 @@ type Project = {
   title: string;
   status: 'draft' | 'submitted' | 'under_review' | 'approved' | 'rejected';
   studentId?: { id: string; name?: string; fullName?: string; email?: string; department?: string };
+  similarityScore?: number;
+  similarityMatchedProject?: { id?: string; _id?: string; title?: string } | null;
   createdAt: string;
   updatedAt: string;
   objectives?: string;
   abstract?: string;
 };
+
+function getSimilarityBadge(score?: number) {
+  if (score == null || score === 0) return null;
+  const color = score >= 60
+    ? 'bg-red-100 text-red-700 border-red-200'
+    : score >= 30
+    ? 'bg-amber-100 text-amber-700 border-amber-200'
+    : 'bg-emerald-100 text-emerald-700 border-emerald-200';
+  return (
+    <Badge variant="outline" className={`gap-1 text-xs ${color}`}>
+      <AlertCircle className="h-3 w-3" />
+      {score}% similar
+    </Badge>
+  );
+}
 
 function getStatusBadge(status: Project['status']) {
   if (status === 'approved') {
@@ -115,7 +132,10 @@ export default function DocumentationReviewPage() {
                 </CardDescription>
               </div>
             </div>
-            <div className="shrink-0">{getStatusBadge(project.status)}</div>
+            <div className="shrink-0 flex flex-col items-end gap-1">
+              {getStatusBadge(project.status)}
+              {getSimilarityBadge(project.similarityScore)}
+            </div>
           </div>
         </CardHeader>
 
