@@ -8,7 +8,7 @@ import { ProposalCard } from "@/app/(src)/components/dashboard/ProposalCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileText, CheckCircle, Clock, AlertCircle, Plus, Bell, ArrowRight } from "lucide-react";
+import { FileText, CheckCircle, Clock, AlertCircle, Plus, Bell, ArrowRight, FolderGit2, GraduationCap } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
 
@@ -39,10 +39,14 @@ export default function DashboardPage() {
   const { user } = useAuth();
 
   const { data: propData } = useSWR("/proposals", fetcher);
+  const { data: projectData } = useSWR("/projects", fetcher);
   const { data: notifData } = useSWR("/notifications", fetcher);
 
   const proposals: Array<{ id: string; title: string; status: BackendStatus; department?: string; abstract?: string; teacher?: { name?: string }; createdAt: string }> =
     propData?.data ?? [];
+
+  const projects: Array<{ id: string; _id: string; title: string; status: string; mentorId?: { fullName?: string; name?: string } | null; createdAt: string }> =
+    projectData?.data ?? [];
 
   const notifications: Array<{ id: string; notificationType: string; message: string; timestamp: string; isRead: boolean }> =
     notifData?.data ?? [];
@@ -83,6 +87,65 @@ export default function DashboardPage() {
             <StatsCard key={stat.title} {...stat} />
           ))}
         </div>
+
+        {/* Active Projects */}
+        {projects.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
+                <FolderGit2 className="h-5 w-5 text-emerald-600" />
+                Active Projects
+              </h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-primary"
+                onClick={() => router.push("/student/dashboard/projects")}
+              >
+                View All <ArrowRight className="ml-1 h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {projects.slice(0, 3).map((proj) => {
+                const advisorName = proj.mentorId?.fullName ?? proj.mentorId?.name ?? null;
+                const statusColors: Record<string, string> = {
+                  submitted:    'bg-amber-100 text-amber-700',
+                  under_review: 'bg-blue-100 text-blue-700',
+                  approved:     'bg-emerald-100 text-emerald-700',
+                  rejected:     'bg-red-100 text-red-700',
+                  draft:        'bg-gray-100 text-gray-600',
+                };
+                return (
+                  <Card
+                    key={proj.id ?? proj._id}
+                    className="cursor-pointer hover:shadow-md transition-shadow border-emerald-100"
+                    onClick={() => router.push('/student/dashboard/projects')}
+                  >
+                    <CardContent className="pt-5 space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-semibold text-sm line-clamp-2 leading-snug">{proj.title}</p>
+                        <Badge className={`shrink-0 text-[10px] border-0 ${statusColors[proj.status] ?? statusColors.draft}`}>
+                          {proj.status.replace('_', ' ').toUpperCase()}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <GraduationCap className="h-3.5 w-3.5 text-emerald-600" />
+                        {advisorName ? <span className="font-medium text-gray-700">{advisorName}</span> : <span>No advisor yet</span>}
+                      </div>
+                      <Button
+                        size="sm"
+                        className="w-full rounded-lg bg-emerald-600 hover:bg-emerald-700 h-8 text-xs gap-1"
+                        onClick={(e) => { e.stopPropagation(); router.push('/student/dashboard/projects'); }}
+                      >
+                        <FolderGit2 className="h-3.5 w-3.5" /> Manage Project
+                      </Button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-7">
           <div className="space-y-6 lg:col-span-4 xl:col-span-5">

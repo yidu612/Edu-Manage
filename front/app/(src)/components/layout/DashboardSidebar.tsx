@@ -19,6 +19,7 @@ import {
   Bell,
   LogOut,
   CalendarCheck,
+  FolderGit2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -37,6 +38,7 @@ const navigationItems = {
   student: [
     { name: 'Dashboard',     href: '/student/dashboard',                icon: LayoutDashboard },
     { name: 'My Proposals',  href: '/student/dashboard/proposals',      icon: FileText },
+    { name: 'My Projects',   href: '/student/dashboard/projects',       icon: FolderGit2 },
     { name: 'Group Members', href: '/student/dashboard/group',          icon: Users },
     { name: 'Discussions',   href: '/student/dashboard/discussions',    icon: MessageSquare },
     { name: 'Documents',     href: '/student/dashboard/documentation',  icon: Upload },

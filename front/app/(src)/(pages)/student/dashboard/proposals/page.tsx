@@ -7,8 +7,9 @@ import { ProposalCard } from "@/app/(src)/components/dashboard/ProposalCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Filter, Loader2 } from "lucide-react";
+import { Plus, Search, Filter, Loader2, FolderGit2, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
 import api from "@/lib/api";
 
 const fetcher = (url: string) => api.get(url).then((r) => r.data);
@@ -26,7 +27,7 @@ export default function MyProposalsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
 
   const { data, isLoading } = useSWR("/proposals", fetcher);
-  const proposals: Array<{ id: string; title: string; status: string; department?: string; abstract?: string; teacher?: { name?: string }; createdAt: string }> =
+  const proposals: Array<{ id: string; title: string; status: string; department?: string; abstract?: string; teacher?: { name?: string }; createdAt: string; projectId?: { _id: string; title: string; status: string } | null }> =
     data?.data ?? [];
 
   const filtered = proposals.filter((p) => {
@@ -89,20 +90,31 @@ export default function MyProposalsPage() {
               </p>
             ) : (
               filtered.map((p) => (
-                <div
-                  key={p.id}
-                  onClick={() => router.push(`/student/dashboard/proposals/${p.id}`)}
-                  className="cursor-pointer"
-                >
-                  <ProposalCard
-                    id={p.id}
-                    title={p.title}
-                    description={p.abstract}
-                    status={mapStatus(p.status)}
-                    department={p.department}
-                    supervisor={p.teacher?.name}
-                    date={new Date(p.createdAt).toLocaleDateString()}
-                  />
+                <div key={p.id} className="relative">
+                  <div
+                    onClick={() => router.push(`/student/dashboard/proposals/${p.id}`)}
+                    className="cursor-pointer"
+                  >
+                    <ProposalCard
+                      id={p.id}
+                      title={p.title}
+                      description={p.abstract}
+                      status={mapStatus(p.status)}
+                      department={p.department}
+                      supervisor={p.teacher?.name}
+                      date={new Date(p.createdAt).toLocaleDateString()}
+                    />
+                  </div>
+                  {p.projectId && (
+                    <button
+                      onClick={() => router.push(`/student/dashboard/projects`)}
+                      className="mt-2 w-full flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 transition-colors px-4 py-2 text-sm font-medium text-emerald-700"
+                    >
+                      <FolderGit2 className="h-4 w-4" />
+                      View Active Project
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               ))
             )}
