@@ -36,6 +36,7 @@ export const getProjectStages = async (req, res) => {
     const stages = await ProjectStageProgress.find({ projectId: req.params.id })
       .populate('advisorReview.reviewedBy', 'fullName')
       .populate('adminReview.reviewedBy', 'fullName')
+      .populate('proposalId', 'title status abstract objectives methodology expectedOutcomes attachments feedbackList')
       .sort({ stageOrder: 1 });
 
     res.json({ success: true, data: stages, project: { title: project.title, status: project.status, group: project.groupId } });
@@ -59,6 +60,13 @@ export const submitStage = async (req, res) => {
 
     const stage = await ProjectStageProgress.findOne({ projectId, stageOrder: Number(order) });
     if (!stage) return res.status(404).json({ success: false, message: 'Stage not found' });
+
+    if (stage.stageOrder === 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Stage 1 (Proposal Submission) is managed via the proposals workflow — submit or resubmit your proposal instead.',
+      });
+    }
 
     const submittableStates = ['active', 'advisor_rejected', 'admin_rejected'];
     if (!submittableStates.includes(stage.status)) {
@@ -252,7 +260,7 @@ export const getPendingStageReviews = async (req, res) => {
     let stages;
 
     if (req.user.role === 'admin') {
-      stages = await ProjectStageProgress.find({ status: 'advisor_approved' })
+      stages = await ProjectStageProgress.find({ status: 'advisor_approved', stageOrder: { $ne: 1 } })
         .populate({
           path:     'projectId',
           select:   'title studentId mentorId',
@@ -267,7 +275,7 @@ export const getPendingStageReviews = async (req, res) => {
       // Teacher — stages in 'submitted' state for their assigned projects
       const myProjects = await Project.find({ mentorId: req.user._id }).select('_id');
       const ids        = myProjects.map((p) => p._id);
-      stages = await ProjectStageProgress.find({ projectId: { $in: ids }, status: 'submitted' })
+      stages = await ProjectStageProgress.find({ projectId: { $in: ids }, status: 'submitted', stageOrder: { $ne: 1 } })
         .populate({
           path:     'projectId',
           select:   'title studentId',

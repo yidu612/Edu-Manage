@@ -1,6 +1,7 @@
 import Project from '../models/Project.js';
 import ProjectGroup from '../models/ProjectGroup.js';
 import ProjectStageProgress from '../models/ProjectStageProgress.js';
+import Proposal from '../models/Proposal.js';
 import Milestone from '../models/Milestone.js';
 import { notify } from '../utils/notify.js';
 import mongoose from 'mongoose';
@@ -183,19 +184,51 @@ export const assignProjectGroup = async (req, res) => {
     const existingStages = await ProjectStageProgress.countDocuments({ projectId: project._id, groupId });
     if (existingStages === 0) {
       const sortedStages = [...group.stages].sort((a, b) => a.order - b.order);
-      const stageDocs = sortedStages.map((s, index) => ({
-        projectId:  project._id,
-        groupId:    group._id,
-        stageOrder: s.order,
-        stageName:  s.name,
-        deadline:   s.deadline,
-        status:     index === 0 ? 'active' : 'locked',
-      }));
+
+      // Determine stage 1 status from the linked proposal
+      const proposal = project.proposalId ? await Proposal.findById(project.proposalId) : null;
+      let stage1Status     = 'active';
+      let stage1ProposalId = null;
+
+      if (proposal) {
+        stage1ProposalId = proposal._id;
+        if (proposal.status === 'approved') stage1Status = 'completed';
+        else if (proposal.status === 'pending') stage1Status = 'submitted';
+        // rejected / draft → remains 'active'
+      }
+
+      const stage1Completed = stage1Status === 'completed';
+
+      const stageDocs = sortedStages.map((s, index) => {
+        const doc = {
+          projectId:  project._id,
+          groupId:    group._id,
+          stageOrder: s.order,
+          stageName:  index === 0 ? 'Proposal Submission' : s.name,
+          deadline:   s.deadline,
+          status:     index === 0 ? stage1Status : (index === 1 && stage1Completed) ? 'active' : 'locked',
+          proposalId: index === 0 ? stage1ProposalId : null,
+        };
+        if (index === 0 && stage1Status !== 'active') {
+          doc.submittedAt = proposal?.createdAt ?? new Date();
+        }
+        if (index === 0 && stage1Completed) {
+          doc.advisorReview = { status: 'approved', feedback: '', reviewedAt: proposal?.updatedAt ?? new Date() };
+          doc.adminReview   = { status: 'approved', feedback: '', reviewedAt: proposal?.updatedAt ?? new Date() };
+        }
+        return doc;
+      });
       await ProjectStageProgress.insertMany(stageDocs);
       await ProjectGroup.findByIdAndUpdate(groupId, { isLocked: true, $inc: { projectCount: 1 } });
     }
 
-    const newStatus = ['draft', 'pending', 'submitted'].includes(project.status) ? 'active' : project.status;
+    // Advance project status only when proposal is already approved
+    const linkedProposal = project.proposalId ? await Proposal.findById(project.proposalId) : null;
+    let newStatus = project.status;
+    if (linkedProposal?.status === 'approved') {
+      const stageCount = (await ProjectStageProgress.countDocuments({ projectId: project._id, groupId })) || group.stages.length;
+      newStatus = stageCount === 2 ? 'under_review' : 'active';
+    }
     project.groupId = group._id;
     project.status  = newStatus;
     await project.save();

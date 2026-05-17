@@ -55,7 +55,7 @@ type Proposal = {
   teacher?: { _id: string; fullName: string; email: string } | null;
   attachments: Attachment[];
   createdAt: string;
-  projectId?: { _id: string; title: string; status: string } | null;
+  projectId?: { _id: string; title: string; status: string; groupId?: string | null } | null;
 };
 
 function getInitials(name: string = '') {
@@ -122,9 +122,11 @@ export default function AdminProposalsPage() {
     setSubmitting(null);
   };
 
+  const projectAlreadyHasGroup = !!(selected?.projectId?.groupId);
+
   const handleReview = async (status: 'approved' | 'rejected') => {
     if (!selected) return;
-    if (status === 'approved' && !groupId) {
+    if (status === 'approved' && !groupId && !projectAlreadyHasGroup) {
       toast({ variant: 'destructive', title: 'Group required', description: 'Select a Project Group before approving.' });
       return;
     }
@@ -410,28 +412,35 @@ export default function AdminProposalsPage() {
                   <div className="rounded-xl border p-4 space-y-3 bg-muted/20">
                     <p className="text-sm font-semibold">Review Decision</p>
 
-                    {/* Group selector — required for approval */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                        <Layers className="h-3.5 w-3.5" /> Project Group (required to approve)
-                      </label>
-                      <Select value={groupId} onValueChange={setGroupId}>
-                        <SelectTrigger className="rounded-xl text-sm">
-                          <SelectValue placeholder="Select a project group…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {groups.length === 0 ? (
-                            <SelectItem value="none" disabled>
-                              No groups available — create one first
-                            </SelectItem>
-                          ) : groups.map((g) => (
-                            <SelectItem key={g._id} value={g._id}>
-                              {g.name}{g.academicYear ? ` (${g.academicYear})` : ''} — {g.stages.length} stages
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {/* Group selector */}
+                    {projectAlreadyHasGroup ? (
+                      <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 flex items-center gap-2 text-sm text-blue-700">
+                        <Layers className="h-4 w-4 shrink-0" />
+                        <span>Project already has a group assigned — stage 1 will be auto-completed on approval.</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                          <Layers className="h-3.5 w-3.5" /> Project Group <span className="text-destructive ml-0.5">*</span>
+                        </label>
+                        <Select value={groupId} onValueChange={setGroupId}>
+                          <SelectTrigger className="rounded-xl text-sm">
+                            <SelectValue placeholder="Select a project group…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {groups.length === 0 ? (
+                              <SelectItem value="none" disabled>
+                                No groups available — create one first
+                              </SelectItem>
+                            ) : groups.map((g) => (
+                              <SelectItem key={g._id} value={g._id}>
+                                {g.name}{g.academicYear ? ` (${g.academicYear})` : ''} — {g.stages.length} stages
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
 
                     <Textarea
                       placeholder="Optional: add a comment or feedback for the student…"
@@ -443,7 +452,7 @@ export default function AdminProposalsPage() {
                       <Button
                         className="flex-1 rounded-full bg-emerald-600 hover:bg-emerald-700 gap-2"
                         onClick={() => handleReview('approved')}
-                        disabled={!!submitting || !groupId}
+                        disabled={!!submitting || (!groupId && !projectAlreadyHasGroup)}
                       >
                         {submitting === 'approved'
                           ? <Loader2 className="h-4 w-4 animate-spin" />

@@ -19,6 +19,7 @@ const reviewSchema = {
 const projectStageProgressSchema = new mongoose.Schema({
   projectId:  { type: ObjectId, ref: 'Project',      required: true },
   groupId:    { type: ObjectId, ref: 'ProjectGroup',  required: true },
+  proposalId: { type: ObjectId, ref: 'Proposal',      default: null },   // stage 1 only
   stageOrder: { type: Number, required: true },
   stageName:  { type: String, required: true },
   deadline:   { type: Date,   required: true },

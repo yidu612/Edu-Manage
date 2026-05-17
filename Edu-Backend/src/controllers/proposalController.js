@@ -19,7 +19,7 @@ export const getAllProposals = async (req, res) => {
     const proposals = await Proposal.find(filter)
       .populate("student", "fullName email department")
       .populate("teacher", "fullName email department")
-      .populate("projectId", "title status")
+      .populate("projectId", "title status groupId")
       .sort({ createdAt: -1 });
 
     res.status(200).json({ success: true, count: proposals.length, data: proposals });
@@ -178,6 +178,18 @@ export const submitProposal = async (req, res) => {
       proposalId: saved._id,
     });
 
+    // If a group was already assigned, sync stage 1 to 'submitted'
+    const stage1 = await ProjectStageProgress.findOne({ projectId, stageOrder: 1 });
+    if (stage1 && stage1.status === 'active') {
+      stage1.proposalId   = saved._id;
+      stage1.stageName    = 'Proposal Submission';
+      stage1.status       = 'submitted';
+      stage1.submittedAt  = new Date();
+      stage1.advisorReview = { status: 'pending' };
+      stage1.adminReview   = { status: 'pending' };
+      await stage1.save();
+    }
+
     const populated = await Proposal.findById(saved._id)
       .populate("student", "fullName email department")
       .populate("teacher", "fullName email department")
@@ -221,44 +233,73 @@ export const reviewProposal = async (req, res) => {
     // Advance or reset the linked project based on the review decision
     if (proposal.projectId) {
       if (status === 'approved') {
-        // Admin must supply a Project Group when approving
         if (req.user.role === 'admin') {
-          const { groupId } = req.body;
-          if (!groupId) {
-            return res.status(400).json({ success: false, message: 'groupId is required when approving a proposal as admin' });
+          // Check whether stages already exist (group was pre-assigned via the projects page)
+          const existingStages = await ProjectStageProgress.find({ projectId: proposal.projectId }).sort({ stageOrder: 1 });
+
+          if (existingStages.length > 0) {
+            // ── Stages already set up — update stage 1 in-place ──────────────
+            const stage1 = existingStages[0];
+            stage1.stageName      = 'Proposal Submission';
+            stage1.proposalId     = proposal._id;
+            stage1.status         = 'completed';
+            stage1.submittedAt    = stage1.submittedAt ?? new Date();
+            stage1.advisorReview  = { status: 'approved', reviewedBy: req.user._id, feedback: '', reviewedAt: new Date() };
+            stage1.adminReview    = { status: 'approved', reviewedBy: req.user._id, feedback: comment?.trim() ?? '', reviewedAt: new Date() };
+            await stage1.save();
+
+            if (existingStages.length > 1) {
+              existingStages[1].status = 'active';
+              await existingStages[1].save();
+            }
+
+            const newStatus = existingStages.length === 2 ? 'under_review' : 'active';
+            await Project.findByIdAndUpdate(proposal.projectId, { status: newStatus });
+
+            await notify({
+              recipientId:      proposal.student,
+              notificationType: 'system',
+              message:          `Your proposal "${proposal.title}" was approved! Proceed to ${existingStages[1]?.stageName ?? 'the next stage'}.`,
+              priority:         'high',
+            });
+          } else {
+            // ── No stages yet — groupId required to create them ───────────────
+            const { groupId } = req.body;
+            if (!groupId) {
+              return res.status(400).json({ success: false, message: 'groupId is required — no project group is assigned yet' });
+            }
+            const group = await ProjectGroup.findById(groupId);
+            if (!group) return res.status(404).json({ success: false, message: 'Project group not found' });
+            if (!group.stages || group.stages.length < 2) {
+              return res.status(400).json({ success: false, message: 'Project group must have at least 2 stages' });
+            }
+
+            const sortedStages = [...group.stages].sort((a, b) => a.order - b.order);
+            const stageDocs = sortedStages.map((s, index) => ({
+              projectId:     proposal.projectId,
+              groupId:       group._id,
+              stageOrder:    s.order,
+              stageName:     index === 0 ? 'Proposal Submission' : s.name,
+              deadline:      s.deadline,
+              status:        index === 0 ? 'completed' : index === 1 ? 'active' : 'locked',
+              proposalId:    index === 0 ? proposal._id : null,
+              submittedAt:   index === 0 ? new Date() : undefined,
+              advisorReview: index === 0 ? { status: 'approved', reviewedBy: req.user._id, feedback: '', reviewedAt: new Date() } : undefined,
+              adminReview:   index === 0 ? { status: 'approved', reviewedBy: req.user._id, feedback: comment?.trim() ?? '', reviewedAt: new Date() } : undefined,
+            }));
+            await ProjectStageProgress.insertMany(stageDocs);
+            await ProjectGroup.findByIdAndUpdate(groupId, { isLocked: true, $inc: { projectCount: 1 } });
+
+            const newStatus = sortedStages.length === 2 ? 'under_review' : 'active';
+            await Project.findByIdAndUpdate(proposal.projectId, { status: newStatus, groupId: group._id });
+
+            await notify({
+              recipientId:      proposal.student,
+              notificationType: 'system',
+              message:          `Your proposal "${proposal.title}" was approved! Proceed to ${sortedStages[1].name}.`,
+              priority:         'high',
+            });
           }
-          const group = await ProjectGroup.findById(groupId);
-          if (!group) return res.status(404).json({ success: false, message: 'Project group not found' });
-          if (!group.stages || group.stages.length < 2) {
-            return res.status(400).json({ success: false, message: 'Project group must have at least 2 stages' });
-          }
-
-          const sortedStages = [...group.stages].sort((a, b) => a.order - b.order);
-
-          // Build ProjectStageProgress records: stage 1 = completed (proposal approved), stage 2 = active, rest = locked
-          const stageDocs = sortedStages.map((s, index) => ({
-            projectId:  proposal.projectId,
-            groupId:    group._id,
-            stageOrder: s.order,
-            stageName:  s.name,
-            deadline:   s.deadline,
-            status:     index === 0 ? 'completed' : index === 1 ? 'active' : 'locked',
-          }));
-          await ProjectStageProgress.insertMany(stageDocs);
-
-          // Lock the group and increment its project count
-          await ProjectGroup.findByIdAndUpdate(groupId, { isLocked: true, $inc: { projectCount: 1 } });
-
-          // Project status: 'under_review' if only 2 stages (last stage now active), else 'active'
-          const newProjectStatus = sortedStages.length === 2 ? 'under_review' : 'active';
-          await Project.findByIdAndUpdate(proposal.projectId, { status: newProjectStatus, groupId: group._id });
-
-          await notify({
-            recipientId:      proposal.student,
-            notificationType: 'system',
-            message:          `Your proposal "${proposal.title}" was approved! Your project is now active — proceed to ${sortedStages[1].name}.`,
-            priority:         'high',
-          });
         } else {
           // Teacher approval path (no group assignment)
           await Project.findByIdAndUpdate(proposal.projectId, { status: 'active' });
@@ -271,6 +312,12 @@ export const reviewProposal = async (req, res) => {
         }
       } else if (status === 'rejected') {
         await Project.findByIdAndUpdate(proposal.projectId, { status: 'draft', proposalId: null });
+        // Reset stage 1 back to active so student can resubmit a proposal
+        await ProjectStageProgress.findOneAndUpdate(
+          { projectId: proposal.projectId, stageOrder: 1 },
+          { status: 'active', proposalId: null, submittedAt: null,
+            advisorReview: { status: 'pending' }, adminReview: { status: 'pending' } },
+        );
         await notify({
           recipientId:      proposal.student,
           notificationType: 'system',

@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import {
   Layers, CheckCircle2, Clock, Lock, Upload, FileText, Download,
-  ChevronLeft, Loader2, XCircle, AlertCircle, Send,
+  ChevronLeft, Loader2, XCircle, AlertCircle, Send, ArrowRight,
 } from 'lucide-react';
 import { useToast } from '@/app/(src)/hooks/use-toast';
 import api from '@/lib/api';
@@ -29,6 +29,14 @@ type ReviewSub = {
   reviewedBy?: { fullName: string };
 };
 
+type ProposalRef = {
+  _id: string;
+  title: string;
+  status: 'pending' | 'approved' | 'rejected' | 'draft';
+  abstract?: string;
+  objectives?: string;
+};
+
 type Stage = {
   _id: string;
   stageOrder: number;
@@ -40,6 +48,7 @@ type Stage = {
   documents: Document[];
   advisorReview: ReviewSub;
   adminReview: ReviewSub;
+  proposalId?: ProposalRef | null;
 };
 
 type ProjectInfo = {
@@ -188,60 +197,67 @@ export default function StudentStagesPage() {
                     </CardHeader>
 
                     <CardContent className="space-y-3 pt-0">
-                      {/* Submission notes */}
-                      {stage.submissionNotes && (
-                        <div className="rounded-lg bg-muted/40 border p-3">
-                          <p className="text-xs text-muted-foreground mb-1 font-medium">Your notes</p>
-                          <p className="text-sm whitespace-pre-wrap">{stage.submissionNotes}</p>
-                        </div>
-                      )}
+                      {/* ── Stage 1: Proposal Submission — show proposal data ── */}
+                      {stage.stageOrder === 1 ? (
+                        <ProposalStageCard stage={stage} projectId={id} />
+                      ) : (
+                        <>
+                          {/* Submission notes */}
+                          {stage.submissionNotes && (
+                            <div className="rounded-lg bg-muted/40 border p-3">
+                              <p className="text-xs text-muted-foreground mb-1 font-medium">Your notes</p>
+                              <p className="text-sm whitespace-pre-wrap">{stage.submissionNotes}</p>
+                            </div>
+                          )}
 
-                      {/* Uploaded documents */}
-                      {stage.documents.length > 0 && (
-                        <div className="space-y-1.5">
-                          {stage.documents.map((doc) => (
-                            <a
-                              key={doc._id}
-                              href={doc.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-2 rounded-lg border p-2 hover:bg-muted/40 transition-colors"
+                          {/* Uploaded documents */}
+                          {stage.documents.length > 0 && (
+                            <div className="space-y-1.5">
+                              {stage.documents.map((doc) => (
+                                <a
+                                  key={doc._id}
+                                  href={doc.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-2 rounded-lg border p-2 hover:bg-muted/40 transition-colors"
+                                >
+                                  <FileText className="h-4 w-4 text-primary shrink-0" />
+                                  <span className="text-sm flex-1 truncate">{doc.name}</span>
+                                  {doc.size > 0 && (
+                                    <span className="text-xs text-muted-foreground">{formatBytes(doc.size)}</span>
+                                  )}
+                                  <Download className="h-4 w-4 text-muted-foreground shrink-0" />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Review feedback */}
+                          {stage.advisorReview?.status === 'rejected' && stage.advisorReview.feedback && (
+                            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3">
+                              <p className="text-xs font-semibold text-amber-700 mb-1">Advisor Feedback</p>
+                              <p className="text-sm text-amber-900">{stage.advisorReview.feedback}</p>
+                            </div>
+                          )}
+                          {stage.adminReview?.status === 'rejected' && stage.adminReview.feedback && (
+                            <div className="rounded-lg bg-red-50 border border-red-200 p-3">
+                              <p className="text-xs font-semibold text-red-700 mb-1">Admin Feedback</p>
+                              <p className="text-sm text-red-900">{stage.adminReview.feedback}</p>
+                            </div>
+                          )}
+
+                          {/* Action button */}
+                          {canSubmit && (
+                            <Button
+                              className="gap-2 rounded-xl h-9 text-sm"
+                              size="sm"
+                              onClick={() => openSubmit(stage)}
                             >
-                              <FileText className="h-4 w-4 text-primary shrink-0" />
-                              <span className="text-sm flex-1 truncate">{doc.name}</span>
-                              {doc.size > 0 && (
-                                <span className="text-xs text-muted-foreground">{formatBytes(doc.size)}</span>
-                              )}
-                              <Download className="h-4 w-4 text-muted-foreground shrink-0" />
-                            </a>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Review feedback */}
-                      {stage.advisorReview?.status === 'rejected' && stage.advisorReview.feedback && (
-                        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3">
-                          <p className="text-xs font-semibold text-amber-700 mb-1">Advisor Feedback</p>
-                          <p className="text-sm text-amber-900">{stage.advisorReview.feedback}</p>
-                        </div>
-                      )}
-                      {stage.adminReview?.status === 'rejected' && stage.adminReview.feedback && (
-                        <div className="rounded-lg bg-red-50 border border-red-200 p-3">
-                          <p className="text-xs font-semibold text-red-700 mb-1">Admin Feedback</p>
-                          <p className="text-sm text-red-900">{stage.adminReview.feedback}</p>
-                        </div>
-                      )}
-
-                      {/* Action button */}
-                      {canSubmit && (
-                        <Button
-                          className="gap-2 rounded-xl h-9 text-sm"
-                          size="sm"
-                          onClick={() => openSubmit(stage)}
-                        >
-                          <Send className="h-4 w-4" />
-                          {stage.status === 'active' ? 'Submit Stage' : 'Resubmit Stage'}
-                        </Button>
+                              <Send className="h-4 w-4" />
+                              {stage.status === 'active' ? 'Submit Stage' : 'Resubmit Stage'}
+                            </Button>
+                          )}
+                        </>
                       )}
                     </CardContent>
                   </Card>
@@ -324,5 +340,92 @@ export default function StudentStagesPage() {
         </DialogContent>
       </Dialog>
     </DashboardLayout>
+  );
+}
+
+// ── Proposal card rendered inside Stage 1 ────────────────────────────────────
+
+const PROPOSAL_STATUS_META: Record<string, { label: string; cls: string }> = {
+  pending:  { label: 'Under Review', cls: 'bg-amber-100 text-amber-700 border-amber-200' },
+  approved: { label: 'Approved',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  rejected: { label: 'Rejected',     cls: 'bg-red-100 text-red-700 border-red-200' },
+  draft:    { label: 'Draft',        cls: 'bg-gray-100 text-gray-600 border-gray-200' },
+};
+
+function ProposalStageCard({ stage, projectId }: { stage: Stage; projectId: string }) {
+  const proposal = stage.proposalId;
+
+  if (!proposal) {
+    return (
+      <div className="rounded-xl border border-dashed p-4 space-y-2">
+        <p className="text-sm text-muted-foreground">
+          No proposal has been submitted for this project yet.
+        </p>
+        <Link
+          href={`/student/dashboard/proposals/new?projectId=${projectId}`}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+        >
+          <FileText className="h-4 w-4" /> Submit Proposal <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+    );
+  }
+
+  const meta = PROPOSAL_STATUS_META[proposal.status] ?? PROPOSAL_STATUS_META.draft;
+
+  return (
+    <div className="space-y-3">
+      {/* Proposal summary card */}
+      <div className="rounded-xl border bg-muted/20 p-4 space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-primary shrink-0" />
+            <span className="font-medium text-sm">{proposal.title}</span>
+          </div>
+          <Badge variant="outline" className={`text-xs gap-1 ${meta.cls}`}>
+            {meta.label}
+          </Badge>
+        </div>
+        {proposal.abstract && (
+          <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">{proposal.abstract}</p>
+        )}
+      </div>
+
+      {/* Status-specific guidance */}
+      {proposal.status === 'approved' && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 flex items-start gap-2">
+          <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+          Proposal approved — this stage is complete. Proceed to the next stage.
+        </div>
+      )}
+      {proposal.status === 'pending' && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 flex items-start gap-2">
+          <Clock className="h-4 w-4 shrink-0 mt-0.5" />
+          Proposal is under review by your advisor and admin. No action required yet.
+        </div>
+      )}
+      {proposal.status === 'rejected' && (
+        <div className="space-y-2">
+          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 flex items-start gap-2">
+            <XCircle className="h-4 w-4 shrink-0 mt-0.5" />
+            Proposal was not approved. Revise and resubmit to continue.
+          </div>
+          <Link
+            href={`/student/dashboard/proposals/new?projectId=${projectId}`}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+          >
+            <Send className="h-4 w-4" /> Resubmit Proposal <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      )}
+
+      {/* Link to full proposals page */}
+      <Link
+        href="/student/dashboard/proposals"
+        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        View in Proposals <ArrowRight className="h-3 w-3" />
+      </Link>
+    </div>
   );
 }
