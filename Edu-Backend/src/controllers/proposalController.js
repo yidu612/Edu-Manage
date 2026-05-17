@@ -3,6 +3,7 @@ import upload from "../middleware/multer.js";
 import Proposal from "../models/Proposal.js";
 import User from "../models/user.model.js";
 import mongoose from "mongoose";
+import { computeSimilarity } from "../utils/similarity.js";
 
 // Get proposals for the current user (student → own; teacher → assigned; admin → all)
 export const getAllProposals = async (req, res) => {
@@ -100,9 +101,32 @@ export const uploadProposalFile = (req, res, next) => {
 // Submit a new proposal
 export const submitProposal = async (req, res) => {
   try {
-    const { title, teacherId, abstract, objectives, methodology, department, expectedOutcomes } = req.body;
+    const { title, teacherId, abstract, objectives, methodology, department, expectedOutcomes, force } = req.body;
 
     if (!title) return res.status(400).json({ success: false, message: "Title is required" });
+
+    // Duplicate detection — compare abstract against existing non-draft proposals
+    if (abstract && force !== 'true') {
+      const existing = await Proposal.find({ status: { $ne: 'draft' } }).select('title abstract _id').lean();
+      let maxSimilarity = 0;
+      let matchedTitle = null;
+      for (const p of existing) {
+        if (!p.abstract) continue;
+        const score = computeSimilarity(abstract, p.abstract);
+        if (score > maxSimilarity) {
+          maxSimilarity = score;
+          matchedTitle = p.title;
+        }
+      }
+      if (maxSimilarity > 30) {
+        return res.status(409).json({
+          success: false,
+          message: `Abstract is ${maxSimilarity}% similar to an existing proposal: "${matchedTitle}". Check the "Submit anyway" box to proceed.`,
+          similarityScore: maxSimilarity,
+          matchedTitle,
+        });
+      }
+    }
 
     if (teacherId) {
       if (!mongoose.Types.ObjectId.isValid(teacherId)) {

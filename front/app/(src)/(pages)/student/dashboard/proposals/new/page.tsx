@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Send, Loader2, Sparkles, Save, Paperclip, Tag } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Sparkles, Save, Paperclip, Tag, AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/app/(src)/hooks/use-toast';
 import { AICheckerModal } from '@/app/(src)/components/modals/AICheckerModal';
@@ -44,6 +44,8 @@ export default function NewProposalPage() {
   });
   const [keywordInput, setKeywordInput] = useState('');
   const [keywordList, setKeywordList] = useState<string[]>([]);
+  const [similarityWarning, setSimilarityWarning] = useState<{ score: number; matchedTitle: string } | null>(null);
+  const [forceSubmit, setForceSubmit] = useState(false);
 
   const addKeyword = () => {
     const kw = keywordInput.trim();
@@ -92,14 +94,21 @@ export default function NewProposalPage() {
     setIsLoading(true);
     try {
       const fd = buildFormData();
+      if (forceSubmit) fd.append('force', 'true');
       if (fileRef.current?.files?.[0]) fd.append('proposalFile', fileRef.current.files[0]);
 
       await api.post('/proposals/submit', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       toast({ title: 'Proposal Submitted', description: 'Your proposal has been submitted for review.' });
       router.push('/student/dashboard/proposals');
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Submission failed.';
-      toast({ variant: 'destructive', title: 'Error', description: msg });
+      const errData = (err as { response?: { data?: { message?: string; similarityScore?: number; matchedTitle?: string; status?: number } } })?.response;
+      if (errData?.data?.similarityScore !== undefined) {
+        // 409 — duplicate warning
+        setSimilarityWarning({ score: errData.data.similarityScore!, matchedTitle: errData.data.matchedTitle ?? 'another proposal' });
+      } else {
+        const msg = errData?.data?.message ?? 'Submission failed.';
+        toast({ variant: 'destructive', title: 'Error', description: msg });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -249,9 +258,33 @@ export default function NewProposalPage() {
             </CardContent>
           </Card>
 
+          {similarityWarning && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-amber-800">Similarity Warning — {similarityWarning.score}% match</p>
+                  <p className="text-sm text-amber-700 mt-1">
+                    Your abstract is similar to an existing proposal: <span className="font-medium">"{similarityWarning.matchedTitle}"</span>.
+                    Please revise your abstract or confirm you understand the overlap.
+                  </p>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-amber-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={forceSubmit}
+                  onChange={(e) => setForceSubmit(e.target.checked)}
+                  className="rounded border-amber-400"
+                />
+                I acknowledge the similarity and want to submit anyway
+              </label>
+            </div>
+          )}
+
           <div className="flex flex-col-reverse sm:flex-row gap-4 sm:justify-end pt-4">
             <Button type="button" variant="outline" className="rounded-full px-8" onClick={() => router.back()}>Cancel</Button>
-            <Button type="submit" className="rounded-full px-8 gap-2" disabled={isLoading}>
+            <Button type="submit" className="rounded-full px-8 gap-2" disabled={isLoading || (!!similarityWarning && !forceSubmit)}>
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               Submit Proposal
             </Button>
