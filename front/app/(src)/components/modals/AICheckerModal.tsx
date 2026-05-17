@@ -2,236 +2,199 @@
 
 import { useState } from 'react';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  Sparkles,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
-  FileText,
-  Loader2,
+  Sparkles, CheckCircle2, AlertTriangle, Loader2, FileText, Wand2, AlignLeft,
 } from 'lucide-react';
+import api from '@/lib/api';
 
 interface AICheckerModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialText?: string;
 }
 
-interface CheckResult {
-  category: string;
-  status: 'pass' | 'warning' | 'fail';
-  message: string;
-  score: number;
+type Mode = 'grammar' | 'summary' | 'clarity';
+
+interface ClarityResult {
+  writingScore?: number;
+  grammarScore?: number;
+  clarityScore?: number;
+  suggestions?: string;
 }
 
-export function AICheckerModal({ open, onOpenChange }: AICheckerModalProps) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [results, setResults] = useState<CheckResult[] | null>(null);
+export function AICheckerModal({ open, onOpenChange, initialText = '' }: AICheckerModalProps) {
+  const [text, setText] = useState(initialText);
+  const [mode, setMode] = useState<Mode>('clarity');
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [clarityData, setClarityData] = useState<ClarityResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const mockResults: CheckResult[] = [
-    {
-      category: 'Originality',
-      status: 'pass',
-      message: 'Content appears to be original with no detected plagiarism.',
-      score: 95,
-    },
-    {
-      category: 'AI Content Detection',
-      status: 'warning',
-      message:
-        'Some sections may contain AI-generated content. Consider rephrasing.',
-      score: 72,
-    },
-    {
-      category: 'Grammar & Clarity',
-      status: 'pass',
-      message: 'Well-written with clear structure and minimal errors.',
-      score: 88,
-    },
-    {
-      category: 'Technical Depth',
-      status: 'pass',
-      message: 'Good technical detail and methodology explanation.',
-      score: 85,
-    },
-    {
-      category: 'References',
-      status: 'warning',
-      message: 'Consider adding more recent academic sources.',
-      score: 65,
-    },
-  ];
-
-  const handleAnalyze = () => {
-    setIsAnalyzing(true);
-    setProgress(0);
-    setResults(null);
-
-    // Simulate analysis progress
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsAnalyzing(false);
-          setResults(mockResults);
-          return 100;
-        }
-        return prev + 10;
-      });
-    }, 200);
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'pass':
-        return <CheckCircle2 className="h-5 w-5 text-emerald-600" />;
-      case 'warning':
-        return <AlertTriangle className="h-5 w-5 text-amber-500" />;
-      case 'fail':
-        return <XCircle className="h-5 w-5 text-red-500" />;
-      default:
-        return null;
+  const handleAnalyze = async () => {
+    if (!text.trim() || text.trim().length < 20) {
+      setError('Please enter at least 20 characters of text to analyze.');
+      return;
+    }
+    setIsLoading(true);
+    setResult(null);
+    setClarityData(null);
+    setError(null);
+    try {
+      const res = await api.post('/ai/check', { text, mode });
+      const data = res.data;
+      if (mode === 'clarity') {
+        setClarityData({
+          writingScore: data.writingScore,
+          grammarScore: data.grammarScore,
+          clarityScore: data.clarityScore,
+          suggestions:  data.suggestions ?? data.raw,
+        });
+      } else {
+        setResult(data.result ?? data.raw ?? '');
+      }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'AI service error.';
+      setError(msg);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const variants = {
-      pass: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-      warning: 'bg-amber-100 text-amber-700 border-amber-200',
-      fail: 'bg-red-100 text-red-700 border-red-200',
-    };
-    return variants[status as keyof typeof variants] || '';
+  const ScoreBar = ({ label, score }: { label: string; score?: number }) => {
+    if (score == null) return null;
+    const color = score >= 8 ? 'text-emerald-600' : score >= 5 ? 'text-amber-600' : 'text-red-600';
+    return (
+      <div className="space-y-1">
+        <div className="flex justify-between text-sm">
+          <span className="font-medium text-muted-foreground">{label}</span>
+          <span className={`font-bold ${color}`}>{score}/10</span>
+        </div>
+        <Progress value={score * 10} className="h-2" />
+      </div>
+    );
   };
 
-  const overallScore = results
-    ? Math.round(results.reduce((acc, r) => acc + r.score, 0) / results.length)
-    : 0;
+  const reset = () => {
+    setResult(null);
+    setClarityData(null);
+    setError(null);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] rounded-3xl">
+      <DialogContent className="sm:max-w-[620px] rounded-3xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-3 text-2xl">
+          <DialogTitle className="flex items-center gap-3 text-xl">
             <div className="p-2 bg-primary/10 rounded-xl">
-              <Sparkles className="h-6 w-6 text-primary" />
+              <Sparkles className="h-5 w-5 text-primary" />
             </div>
-            AI Content Checker
+            AI Writing Assistant
           </DialogTitle>
-          <DialogDescription className="text-base">
-            Analyze your proposal for originality, AI-generated content, and
-            quality.
+          <DialogDescription>
+            Powered by DeepSeek — grammar correction, summarization, and clarity scoring.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
-          {!isAnalyzing && !results && (
-            <div className="text-center py-8 space-y-4">
-              <div className="mx-auto w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center">
-                <FileText className="h-10 w-10 text-primary" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg">Ready to Analyze</h3>
-                <p className="text-muted-foreground text-sm">
-                  Click the button below to start the AI analysis of your
-                  proposal content.
-                </p>
-              </div>
-              <Button
-                onClick={handleAnalyze}
-                className="rounded-full px-8 h-12 gap-2"
-              >
-                <Sparkles className="h-4 w-4" />
-                Start Analysis
-              </Button>
-            </div>
-          )}
+        <div className="space-y-4 py-2">
+          <Tabs value={mode} onValueChange={(v) => { setMode(v as Mode); reset(); }}>
+            <TabsList className="grid grid-cols-3 w-full">
+              <TabsTrigger value="clarity" className="gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Clarity Score
+              </TabsTrigger>
+              <TabsTrigger value="grammar" className="gap-1.5">
+                <Wand2 className="h-3.5 w-3.5" /> Grammar Fix
+              </TabsTrigger>
+              <TabsTrigger value="summary" className="gap-1.5">
+                <AlignLeft className="h-3.5 w-3.5" /> Summarize
+              </TabsTrigger>
+            </TabsList>
 
-          {isAnalyzing && (
-            <div className="text-center py-8 space-y-6">
-              <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
-              <div>
-                <h3 className="font-semibold text-lg">Analyzing Content...</h3>
-                <p className="text-muted-foreground text-sm">
-                  Please wait while we analyze your proposal.
-                </p>
-              </div>
-              <div className="max-w-xs mx-auto space-y-2">
-                <Progress value={progress} className="h-2" />
-                <p className="text-sm text-muted-foreground">
-                  {progress}% complete
-                </p>
-              </div>
-            </div>
-          )}
+            {(['clarity', 'grammar', 'summary'] as Mode[]).map((m) => (
+              <TabsContent key={m} value={m} className="mt-4 space-y-4">
+                <Textarea
+                  placeholder={
+                    m === 'clarity' ? 'Paste your abstract or section for scoring…'
+                    : m === 'grammar' ? 'Paste text to correct grammar and spelling…'
+                    : 'Paste the abstract to summarize in 3 sentences…'
+                  }
+                  value={text}
+                  onChange={(e) => { setText(e.target.value); reset(); }}
+                  className="min-h-[140px] resize-none rounded-xl text-sm"
+                />
 
-          {results && (
-            <div className="space-y-6">
-              {/* Overall Score */}
-              <div className="bg-gradient-to-br from-primary/10 to-primary/5 rounded-2xl p-6 text-center">
-                <div className="text-5xl font-bold text-primary mb-2">
-                  {overallScore}%
-                </div>
-                <p className="text-muted-foreground font-medium">
-                  Overall Quality Score
-                </p>
-              </div>
-
-              {/* Individual Results */}
-              <div className="space-y-3">
-                {results.map((result, index) => (
-                  <div
-                    key={index}
-                    className="flex items-start gap-4 p-4 rounded-xl border bg-card hover:bg-muted/50 transition-colors"
-                  >
-                    {getStatusIcon(result.status)}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold">{result.category}</span>
-                        <Badge
-                          variant="outline"
-                          className={`text-xs ${getStatusBadge(result.status)}`}
-                        >
-                          {result.score}%
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {result.message}
-                      </p>
-                    </div>
+                {error && (
+                  <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                    <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                    {error}
                   </div>
-                ))}
-              </div>
+                )}
 
-              {/* Actions */}
-              <div className="flex gap-3 pt-4">
-                <Button
-                  variant="outline"
-                  className="flex-1 rounded-full"
-                  onClick={() => {
-                    setResults(null);
-                    setProgress(0);
-                  }}
-                >
-                  Run Again
-                </Button>
-                <Button
-                  className="flex-1 rounded-full"
-                  onClick={() => onOpenChange(false)}
-                >
-                  Done
-                </Button>
-              </div>
-            </div>
-          )}
+                {isLoading && (
+                  <div className="flex flex-col items-center gap-3 py-6 text-muted-foreground">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <p className="text-sm">Analyzing with DeepSeek…</p>
+                  </div>
+                )}
+
+                {/* Clarity results */}
+                {m === 'clarity' && clarityData && !isLoading && (
+                  <div className="space-y-4 rounded-xl border bg-card p-4">
+                    <ScoreBar label="Writing Quality" score={clarityData.writingScore} />
+                    <ScoreBar label="Grammar"         score={clarityData.grammarScore} />
+                    <ScoreBar label="Clarity"         score={clarityData.clarityScore} />
+                    {clarityData.suggestions && (
+                      <div className="pt-2 border-t">
+                        <p className="text-xs font-semibold text-muted-foreground mb-2">Suggestions</p>
+                        <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                          {clarityData.suggestions}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Grammar / Summary results */}
+                {(m === 'grammar' || m === 'summary') && result && !isLoading && (
+                  <div className="rounded-xl border bg-card p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-0">
+                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        {m === 'grammar' ? 'Corrected' : 'Summary'}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{result}</p>
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    onClick={handleAnalyze}
+                    disabled={isLoading || text.trim().length < 20}
+                    className="flex-1 gap-2 rounded-full"
+                  >
+                    {isLoading
+                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Analyzing…</>
+                      : <><Sparkles className="h-4 w-4" /> Analyze</>}
+                  </Button>
+                  {(result || clarityData) && (
+                    <Button variant="outline" onClick={reset} className="rounded-full">
+                      Clear
+                    </Button>
+                  )}
+                  <Button variant="ghost" onClick={() => onOpenChange(false)} className="rounded-full">
+                    <FileText className="h-4 w-4 mr-1" /> Done
+                  </Button>
+                </div>
+              </TabsContent>
+            ))}
+          </Tabs>
         </div>
       </DialogContent>
     </Dialog>
