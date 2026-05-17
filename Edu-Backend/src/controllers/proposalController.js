@@ -102,25 +102,40 @@ export const uploadProposalFile = (req, res, next) => {
   });
 };
 
-// Submit a new proposal
+// Submit a new proposal — must be linked to an existing student-owned project
 export const submitProposal = async (req, res) => {
   try {
-    const { title, teacherId, abstract, objectives, methodology, department, expectedOutcomes, force } = req.body;
+    const { title, projectId, teacherId, abstract, objectives, methodology, department, expectedOutcomes, force } = req.body;
 
     if (!title) return res.status(400).json({ success: false, message: "Title is required" });
+    if (!projectId) return res.status(400).json({ success: false, message: "projectId is required — create a project first" });
+    if (!mongoose.Types.ObjectId.isValid(projectId)) {
+      return res.status(400).json({ success: false, message: "Invalid projectId" });
+    }
 
-    // Duplicate detection — compare abstract against existing non-draft proposals
+    // Validate project belongs to this student
+    const project = await Project.findOne({ _id: projectId, studentId: req.user._id });
+    if (!project) return res.status(404).json({ success: false, message: "Project not found or not owned by you" });
+
+    // Reject if an active (non-rejected) proposal already exists for this project
+    const activeProposal = await Proposal.findOne({ projectId, status: { $ne: 'rejected' } });
+    if (activeProposal) {
+      return res.status(409).json({
+        success: false,
+        message: `This project already has an active proposal (status: ${activeProposal.status}). It must be rejected before you can submit a new one.`,
+      });
+    }
+
+    // Duplicate detection — compare abstract against other submitted proposals
     if (abstract && force !== 'true') {
-      const existing = await Proposal.find({ status: { $ne: 'draft' } }).select('title abstract _id').lean();
+      const existing = await Proposal.find({ status: { $nin: ['draft', 'rejected'] }, projectId: { $ne: projectId } })
+        .select('title abstract').lean();
       let maxSimilarity = 0;
       let matchedTitle = null;
       for (const p of existing) {
         if (!p.abstract) continue;
         const score = computeSimilarity(abstract, p.abstract);
-        if (score > maxSimilarity) {
-          maxSimilarity = score;
-          matchedTitle = p.title;
-        }
+        if (score > maxSimilarity) { maxSimilarity = score; matchedTitle = p.title; }
       }
       if (maxSimilarity > 30) {
         return res.status(409).json({
@@ -148,14 +163,23 @@ export const submitProposal = async (req, res) => {
       title, abstract, objectives, methodology, department, expectedOutcomes,
       student: req.user._id,
       teacher: teacherId || undefined,
+      projectId,
       status: "pending",
       attachments,
     });
 
     const saved = await proposal.save();
+
+    // Advance project to submitted state and link proposal
+    await Project.findByIdAndUpdate(projectId, {
+      status: 'submitted',
+      proposalId: saved._id,
+    });
+
     const populated = await Proposal.findById(saved._id)
       .populate("student", "fullName email department")
-      .populate("teacher", "fullName email department");
+      .populate("teacher", "fullName email department")
+      .populate("projectId", "title status");
 
     res.status(201).json({ success: true, message: "Proposal submitted", data: populated });
   } catch (error) {
@@ -192,33 +216,25 @@ export const reviewProposal = async (req, res) => {
       });
     }
 
-    // Auto-create a Project when a proposal is approved for the first time
-    if (status === 'approved' && !proposal.projectId) {
-      const project = await Project.create({
-        title:          proposal.title,
-        abstract:       proposal.abstract,
-        objectives:     proposal.objectives,
-        studentId:      proposal.student,
-        status:         'submitted',
-        submissionDate: new Date(),
-      });
-      proposal.projectId = project._id;
-
-      await notify({
-        recipientId:      proposal.student,
-        notificationType: 'system',
-        message:          `Your proposal "${proposal.title}" was approved! A project has been created for you.`,
-        priority:         'high',
-      });
-    }
-
-    if (status === 'rejected') {
-      await notify({
-        recipientId:      proposal.student,
-        notificationType: 'system',
-        message:          `Your proposal "${proposal.title}" was not approved.${comment ? ` Feedback: ${comment}` : ''}`,
-        priority:         'high',
-      });
+    // Advance or reset the linked project based on the review decision
+    if (proposal.projectId) {
+      if (status === 'approved') {
+        await Project.findByIdAndUpdate(proposal.projectId, { status: 'under_review' });
+        await notify({
+          recipientId:      proposal.student,
+          notificationType: 'system',
+          message:          `Your proposal "${proposal.title}" was approved! Your project is now active.`,
+          priority:         'high',
+        });
+      } else if (status === 'rejected') {
+        await Project.findByIdAndUpdate(proposal.projectId, { status: 'draft', proposalId: null });
+        await notify({
+          recipientId:      proposal.student,
+          notificationType: 'system',
+          message:          `Your proposal "${proposal.title}" was not approved.${comment ? ` Feedback: ${comment}` : ''} You may revise and resubmit.`,
+          priority:         'high',
+        });
+      }
     }
 
     await proposal.save();

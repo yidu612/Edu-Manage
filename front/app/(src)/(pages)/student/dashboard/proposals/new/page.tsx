@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import { DashboardLayout } from '@/app/(src)/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Send, Loader2, Sparkles, Save, Paperclip, Tag, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Sparkles, Save, Paperclip, Tag, AlertTriangle, FolderGit2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/app/(src)/hooks/use-toast';
 import { AICheckerModal } from '@/app/(src)/components/modals/AICheckerModal';
@@ -20,16 +20,28 @@ const fetcher = (url: string) => api.get(url).then((r) => r.data);
 
 export default function NewProposalPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const preselectedProjectId = searchParams.get('projectId') ?? '';
+
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [showAIChecker, setShowAIChecker] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState('');
+  const [selectedProjectId, setSelectedProjectId] = useState(preselectedProjectId);
 
   const { data: teachersData } = useSWR('/users/teachers', fetcher);
   const { data: categoriesData } = useSWR('/admin/categories', fetcher);
+  const { data: projectsData } = useSWR('/projects', fetcher);
   const teachers: Array<{ id: string; name: string; department: string }> = teachersData?.data ?? [];
   const categories: string[] = categoriesData?.data ?? [];
+  // Only show draft projects (no active proposal yet) or the preselected one
+  const eligibleProjects: Array<{ id: string; _id: string; title: string; status: string; proposalId?: { status: string } | null }> =
+    (projectsData?.data ?? []).filter((p: { id: string; _id: string; title: string; status: string; proposalId?: { status: string } | null }) =>
+      !p.proposalId || p.proposalId.status === 'rejected' || p._id === preselectedProjectId || p.id === preselectedProjectId
+    );
+
+  const selectedProject = eligibleProjects.find((p) => (p._id ?? p.id) === selectedProjectId);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -65,6 +77,7 @@ export default function NewProposalPage() {
     const fd = new FormData();
     Object.entries(formData).forEach(([k, v]) => { if (v) fd.append(k, v); });
     if (status) fd.set('status', status);
+    if (selectedProjectId) fd.append('projectId', selectedProjectId);
     keywordList.forEach((kw) => fd.append('keywords', kw));
     return fd;
   };
@@ -86,6 +99,10 @@ export default function NewProposalPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedProjectId) {
+      toast({ variant: 'destructive', title: 'Project required', description: 'Select a project to link this proposal to.' });
+      return;
+    }
     if (!formData.title || !formData.abstract || !formData.department) {
       toast({ variant: 'destructive', title: 'Missing Fields', description: 'Title, abstract, and department are required.' });
       return;
@@ -138,6 +155,49 @@ export default function NewProposalPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Project selector */}
+          <Card className={`border-2 shadow-sm ${!selectedProjectId ? 'border-destructive/40' : 'border-emerald-200'}`}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FolderGit2 className="h-5 w-5 text-emerald-600" />
+                Link to Project <span className="text-destructive">*</span>
+              </CardTitle>
+              <CardDescription>
+                A proposal must be attached to one of your projects.{' '}
+                {eligibleProjects.length === 0 && (
+                  <button type="button" className="underline text-primary" onClick={() => router.push('/student/dashboard/projects')}>
+                    Create a project first →
+                  </button>
+                )}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {preselectedProjectId && selectedProject ? (
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+                  <FolderGit2 className="h-5 w-5 text-emerald-600 shrink-0" />
+                  <div>
+                    <p className="font-semibold text-sm">{selectedProject.title}</p>
+                    <p className="text-xs text-muted-foreground">Pre-selected from your project</p>
+                  </div>
+                </div>
+              ) : (
+                <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+                  <SelectTrigger className="h-12 rounded-xl">
+                    <SelectValue placeholder={eligibleProjects.length === 0 ? 'No eligible projects — create one first' : 'Select a project…'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {eligibleProjects.map((p) => (
+                      <SelectItem key={p._id ?? p.id} value={p._id ?? p.id}>
+                        {p.title}
+                        {p.proposalId?.status === 'rejected' && ' (resubmitting)'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="border-none shadow-sm">
             <CardHeader>
               <CardTitle>Basic Information</CardTitle>
@@ -284,7 +344,7 @@ export default function NewProposalPage() {
 
           <div className="flex flex-col-reverse sm:flex-row gap-4 sm:justify-end pt-4">
             <Button type="button" variant="outline" className="rounded-full px-8" onClick={() => router.back()}>Cancel</Button>
-            <Button type="submit" className="rounded-full px-8 gap-2" disabled={isLoading || (!!similarityWarning && !forceSubmit)}>
+            <Button type="submit" className="rounded-full px-8 gap-2" disabled={isLoading || !selectedProjectId || (!!similarityWarning && !forceSubmit)}>
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               Submit Proposal
             </Button>

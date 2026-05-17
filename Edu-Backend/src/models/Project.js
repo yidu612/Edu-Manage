@@ -21,6 +21,7 @@ const projectSchema = new mongoose.Schema(
     submissionDate:     { type: Date },
     progressPercentage: { type: Number, min: 0, max: 100, default: 0 },
     repositoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Repository' },
+    proposalId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Proposal', default: null },
   },
   { timestamps: true }
 );

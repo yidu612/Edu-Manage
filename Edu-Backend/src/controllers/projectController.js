@@ -12,9 +12,10 @@ export const getProjects = async (req, res) => {
     else if (req.user.role === 'teacher') filter.mentorId = req.user._id;
 
     const projects = await Project.find(filter)
-      .populate('studentId', 'fullName email department')
-      .populate('mentorId',  'fullName email')
+      .populate('studentId',  'fullName email department')
+      .populate('mentorId',   'fullName email')
       .populate('repositoryId', 'visibility')
+      .populate('proposalId', 'title status')
       .sort({ createdAt: -1 });
 
     res.json({ success: true, count: projects.length, data: projects });
@@ -26,9 +27,10 @@ export const getProjects = async (req, res) => {
 export const getProject = async (req, res) => {
   try {
     const project = await Project.findById(req.params.id)
-      .populate('studentId', 'fullName email department')
-      .populate('mentorId',  'fullName email')
-      .populate('repositoryId');
+      .populate('studentId',  'fullName email department')
+      .populate('mentorId',   'fullName email')
+      .populate('repositoryId')
+      .populate('proposalId', 'title status abstract');
 
     if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
 
