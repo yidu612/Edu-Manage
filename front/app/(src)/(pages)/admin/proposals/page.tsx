@@ -21,6 +21,7 @@ import {
 import {
   FileText, Search, CheckCircle, XCircle, Clock, Eye, Loader2,
   GraduationCap, Building2, Calendar, Paperclip, Download, AlignLeft,
+  FolderOpen, ArrowRight,
 } from 'lucide-react';
 import { useToast } from '@/app/(src)/hooks/use-toast';
 import api from '@/lib/api';
@@ -43,6 +44,7 @@ type Proposal = {
   teacher?: { _id: string; fullName: string; email: string } | null;
   attachments: Attachment[];
   createdAt: string;
+  projectId?: { _id: string; title: string; status: string } | null;
 };
 
 function getInitials(name: string = '') {
@@ -223,6 +225,7 @@ export default function AdminProposalsPage() {
                       <TableHead>Student</TableHead>
                       <TableHead>Department</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Project</TableHead>
                       <TableHead>Submitted</TableHead>
                       <TableHead className="text-right">Action</TableHead>
                     </TableRow>
@@ -264,6 +267,15 @@ export default function AdminProposalsPage() {
                             {STATUS_ICONS[p.status]}
                             {p.status.charAt(0).toUpperCase() + p.status.slice(1)}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {p.projectId ? (
+                            <Badge variant="outline" className="gap-1 bg-emerald-50 text-emerald-700 border-emerald-200 text-xs">
+                              <FolderOpen className="h-3 w-3" /> Active
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -402,6 +414,25 @@ export default function AdminProposalsPage() {
                         Reject
                       </Button>
                     </div>
+                  </div>
+                )}
+
+                {/* Linked project badge */}
+                {selected.projectId && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-emerald-700">
+                      <FolderOpen className="h-4 w-4 shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold">Active Project Created</p>
+                        <p className="text-xs text-emerald-600 mt-0.5">{selected.projectId.title}</p>
+                      </div>
+                    </div>
+                    <a
+                      href="/admin/assignments"
+                      className="flex items-center gap-1 text-xs font-medium text-emerald-700 hover:text-emerald-900 transition-colors"
+                    >
+                      Assign Advisor <ArrowRight className="h-3 w-3" />
+                    </a>
                   </div>
                 )}
 

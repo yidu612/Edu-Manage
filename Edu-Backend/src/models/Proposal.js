@@ -43,7 +43,8 @@ const proposalSchema = new mongoose.Schema({
     type: { type: String, required: true },
     size: { type: Number, required: true }
   }],
-  feedbackList: { type: [feedbackSchema], default: [] }
+  feedbackList: { type: [feedbackSchema], default: [] },
+  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
 }, { timestamps: true });
 
 proposalSchema.set('toJSON', { virtuals: true });

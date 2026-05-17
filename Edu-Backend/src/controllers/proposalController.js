@@ -1,9 +1,11 @@
 import cloudinary from "../config/cloudinary.js";
 import upload from "../middleware/multer.js";
 import Proposal from "../models/Proposal.js";
+import Project from "../models/Project.js";
 import User from "../models/user.model.js";
 import mongoose from "mongoose";
 import { computeSimilarity } from "../utils/similarity.js";
+import { notify } from "../utils/notify.js";
 
 // Get proposals for the current user (student → own; teacher → assigned; admin → all)
 export const getAllProposals = async (req, res) => {
@@ -15,6 +17,7 @@ export const getAllProposals = async (req, res) => {
     const proposals = await Proposal.find(filter)
       .populate("student", "fullName email department")
       .populate("teacher", "fullName email department")
+      .populate("projectId", "title status")
       .sort({ createdAt: -1 });
 
     res.status(200).json({ success: true, count: proposals.length, data: proposals });
@@ -29,7 +32,8 @@ export const getProposal = async (req, res) => {
     const proposal = await Proposal.findById(req.params.id)
       .populate("student", "fullName email department")
       .populate("teacher", "fullName email department")
-      .populate("feedbackList.teacher", "fullName email");
+      .populate("feedbackList.teacher", "fullName email")
+      .populate("projectId", "title status");
 
     if (!proposal) return res.status(404).json({ success: false, message: "Proposal not found" });
     res.status(200).json({ success: true, data: proposal });
@@ -188,11 +192,41 @@ export const reviewProposal = async (req, res) => {
       });
     }
 
+    // Auto-create a Project when a proposal is approved for the first time
+    if (status === 'approved' && !proposal.projectId) {
+      const project = await Project.create({
+        title:          proposal.title,
+        abstract:       proposal.abstract,
+        objectives:     proposal.objectives,
+        studentId:      proposal.student,
+        status:         'submitted',
+        submissionDate: new Date(),
+      });
+      proposal.projectId = project._id;
+
+      await notify({
+        recipientId:      proposal.student,
+        notificationType: 'system',
+        message:          `Your proposal "${proposal.title}" was approved! A project has been created for you.`,
+        priority:         'high',
+      });
+    }
+
+    if (status === 'rejected') {
+      await notify({
+        recipientId:      proposal.student,
+        notificationType: 'system',
+        message:          `Your proposal "${proposal.title}" was not approved.${comment ? ` Feedback: ${comment}` : ''}`,
+        priority:         'high',
+      });
+    }
+
     await proposal.save();
     const populated = await Proposal.findById(proposal._id)
       .populate("student", "fullName email")
       .populate("teacher", "fullName email")
-      .populate("feedbackList.teacher", "fullName email");
+      .populate("feedbackList.teacher", "fullName email")
+      .populate("projectId", "title status");
 
     res.json({ success: true, data: populated });
   } catch (err) {
