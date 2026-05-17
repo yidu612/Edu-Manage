@@ -2,13 +2,15 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 // Routes that require authentication
-const PROTECTED_PREFIXES = ["/student", "/teacher", "/admin"];
+const PROTECTED_PREFIXES = ["/student", "/teacher", "/admin", "/coordinator", "/examiner"];
 
 // Role-to-prefix map — prevents a student from accessing /teacher/* etc.
 const ROLE_PREFIX: Record<string, string> = {
-  student: "/student",
-  teacher: "/teacher",
-  admin: "/admin",
+  student:     "/student",
+  teacher:     "/teacher",
+  admin:       "/admin",
+  coordinator: "/coordinator",
+  examiner:    "/examiner",
 };
 
 function decodeJwtRole(token: string): string | null {
@@ -56,5 +58,11 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/student/:path*", "/teacher/:path*", "/admin/:path*"],
+  matcher: [
+    "/student/:path*",
+    "/teacher/:path*",
+    "/admin/:path*",
+    "/coordinator/:path*",
+    "/examiner/:path*",
+  ],
 };

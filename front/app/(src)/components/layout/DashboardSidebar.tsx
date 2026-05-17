@@ -24,7 +24,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/context/AuthContext';
 
-type UserRole = 'student' | 'teacher' | 'admin';
+type UserRole = 'student' | 'teacher' | 'admin' | 'coordinator' | 'examiner';
 
 interface SidebarProps {
   role: UserRole;
@@ -59,12 +59,27 @@ const navigationItems = {
     { name: 'Notifications',  href: '/notifications',      icon: Bell },
     { name: 'Settings',       href: '/admin/settings',     icon: Settings },
   ],
+  coordinator: [
+    { name: 'Dashboard',      href: '/coordinator/dashboard',          icon: LayoutDashboard },
+    { name: 'Dept. Projects', href: '/coordinator/dashboard/projects', icon: FileText },
+    { name: 'Dept. Teams',    href: '/coordinator/dashboard/teams',    icon: Users },
+    { name: 'Notifications',  href: '/notifications',                  icon: Bell },
+    { name: 'Settings',       href: '/coordinator/dashboard/settings', icon: Settings },
+  ],
+  examiner: [
+    { name: 'Dashboard',       href: '/examiner/dashboard',                   icon: LayoutDashboard },
+    { name: 'Defense Sessions',href: '/examiner/dashboard/defense-sessions',  icon: CheckCircle },
+    { name: 'Notifications',   href: '/notifications',                        icon: Bell },
+    { name: 'Settings',        href: '/examiner/dashboard/settings',          icon: Settings },
+  ],
 };
 
 const roleBadgeColors: Record<UserRole, string> = {
-  student: 'bg-blue-100 text-blue-700',
-  teacher: 'bg-emerald-100 text-emerald-700',
-  admin:   'bg-purple-100 text-purple-700',
+  student:     'bg-blue-100 text-blue-700',
+  teacher:     'bg-emerald-100 text-emerald-700',
+  admin:       'bg-purple-100 text-purple-700',
+  coordinator: 'bg-orange-100 text-orange-700',
+  examiner:    'bg-rose-100 text-rose-700',
 };
 
 function getInitials(name: string = '') {
@@ -72,7 +87,13 @@ function getInitials(name: string = '') {
 }
 
 // Dashboard root paths for exact-match detection
-const dashboardRoots = ['/student/dashboard', '/teacher/dashboard', '/admin/dashboard'];
+const dashboardRoots = [
+  '/student/dashboard',
+  '/teacher/dashboard',
+  '/admin/dashboard',
+  '/coordinator/dashboard',
+  '/examiner/dashboard',
+];
 
 export function DashboardSidebar({ role, isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();

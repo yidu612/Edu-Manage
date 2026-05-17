@@ -6,7 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { getRedirectPath } from "@/lib/auth";
 import { Loader2 } from "lucide-react";
 
-type UserRole = "student" | "teacher" | "admin";
+type UserRole = "student" | "teacher" | "admin" | "coordinator" | "examiner";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;

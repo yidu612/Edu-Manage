@@ -73,7 +73,9 @@ export function validateAndRefreshToken(): AuthUser | null {
 // ─── Navigation helpers ───────────────────────────────────────────────────────
 
 export function getRedirectPath(role: string): string {
-  if (role === "teacher") return "/teacher/dashboard";
-  if (role === "admin") return "/admin/dashboard";
+  if (role === "teacher")     return "/teacher/dashboard";
+  if (role === "admin")       return "/admin/dashboard";
+  if (role === "coordinator") return "/coordinator/dashboard";
+  if (role === "examiner")    return "/examiner/dashboard";
   return "/student/dashboard";
 }

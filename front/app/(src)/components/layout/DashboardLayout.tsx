@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Header } from "./Header";
 import { DashboardSidebar } from "@/app/(src)/components/layout/DashboardSidebar";
 
-type UserRole = "student" | "teacher" | "admin";
+type UserRole = "student" | "teacher" | "admin" | "coordinator" | "examiner";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;

@@ -25,15 +25,19 @@ function getInitials(name: string = "") {
 }
 
 const dashboardHref: Record<string, string> = {
-  student: "/student/dashboard",
-  teacher: "/teacher/dashboard",
-  admin:   "/admin/dashboard",
+  student:     "/student/dashboard",
+  teacher:     "/teacher/dashboard",
+  admin:       "/admin/dashboard",
+  coordinator: "/coordinator/dashboard",
+  examiner:    "/examiner/dashboard",
 };
 
 const settingsHref: Record<string, string> = {
-  student: "/student/dashboard/settings",
-  teacher: "/teacher/dashboard/settings",
-  admin:   "/admin/settings",
+  student:     "/student/dashboard/settings",
+  teacher:     "/teacher/dashboard/settings",
+  admin:       "/admin/settings",
+  coordinator: "/coordinator/dashboard/settings",
+  examiner:    "/examiner/dashboard/settings",
 };
 
 export function Header({ onMenuClick, showMenuButton = false }: HeaderProps) {
