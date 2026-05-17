@@ -53,6 +53,7 @@ const navigationItems = {
   ],
   admin: [
     { name: 'Dashboard',      href: '/admin/dashboard',    icon: LayoutDashboard },
+    { name: 'Proposals',      href: '/admin/proposals',    icon: FileText },
     { name: 'Assign Advisors',href: '/admin/assignments',  icon: UserCog },
     { name: 'Teams Overview', href: '/admin/teams',        icon: Users },
     { name: 'Defense Sessions',href: '/admin/defense',     icon: CalendarCheck },
