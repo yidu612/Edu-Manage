@@ -14,6 +14,7 @@ export const getProjects = async (req, res) => {
     const projects = await Project.find(filter)
       .populate('studentId', 'fullName email department')
       .populate('mentorId',  'fullName email')
+      .populate('repositoryId', 'visibility')
       .sort({ createdAt: -1 });
 
     res.json({ success: true, count: projects.length, data: projects });

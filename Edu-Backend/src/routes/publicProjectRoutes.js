@@ -1,16 +1,25 @@
 import express from 'express';
 import Project from '../models/Project.js';
+import Repository from '../models/Repository.js';
 import Documentation from '../models/Documentation.js';
 import Review from '../models/Review.js';
 
 const router = express.Router();
 
-// GET /api/public/projects — approved projects only, no auth required
+// GET /api/public/projects — published (approved + public repo) projects only, no auth required
 router.get('/', async (req, res) => {
   try {
-    const projects = await Project.find({ status: 'approved' })
+    // Find all public repositories
+    const publicRepos = await Repository.find({ visibility: 'public' }).select('projectId');
+    const publicProjectIds = publicRepos.map((r) => r.projectId);
+
+    const projects = await Project.find({
+      status: 'approved',
+      _id: { $in: publicProjectIds },
+    })
       .populate('studentId', 'fullName email department')
       .populate('mentorId', 'fullName email')
+      .populate('repositoryId')
       .sort({ createdAt: -1 });
 
     res.json({ success: true, count: projects.length, data: projects });
@@ -19,12 +28,16 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/public/projects/:id — single approved project
+// GET /api/public/projects/:id — single published project
 router.get('/:id', async (req, res) => {
   try {
+    const repo = await Repository.findOne({ projectId: req.params.id, visibility: 'public' });
+    if (!repo) return res.status(404).json({ success: false, message: 'Project not found' });
+
     const project = await Project.findOne({ _id: req.params.id, status: 'approved' })
       .populate('studentId', 'fullName email department')
-      .populate('mentorId', 'fullName email');
+      .populate('mentorId', 'fullName email')
+      .populate('repositoryId');
 
     if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
 

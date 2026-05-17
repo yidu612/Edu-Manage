@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Users, UserPlus, Search, Filter, CheckCircle, Clock, BookOpen, GraduationCap, Link2, Building2, FileText, Calendar, RefreshCw, Eye, Loader2 } from 'lucide-react';
+import { Users, UserPlus, Search, Filter, CheckCircle, Clock, BookOpen, GraduationCap, Link2, Building2, FileText, Calendar, Globe, Lock, Eye, Loader2 } from 'lucide-react';
 import { useToast } from '@/app/(src)/hooks/use-toast';
 import api from '@/lib/api';
 
@@ -19,10 +19,12 @@ const fetcher = (url: string) => api.get(url).then((r) => r.data);
 
 type Project = {
   id: string;
+  _id?: string;
   title: string;
   status: string;
   studentId?: { id: string; name?: string; department?: string };
   mentorId?: { id: string; name?: string } | null;
+  repositoryId?: { visibility?: 'public' | 'private' } | null;
   createdAt: string;
 };
 
@@ -48,6 +50,7 @@ export default function AssignmentsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
 
   const { data: projectsData, isLoading: loadingProjects } = useSWR('/projects', fetcher);
   const { data: teachersData } = useSWR('/users/teachers', fetcher);
@@ -68,6 +71,22 @@ export default function AssignmentsPage() {
     const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
     return matchesSearch && matchesStatus;
   }), [projects, searchQuery, statusFilter]);
+
+  const togglePublish = async (project: Project) => {
+    const id = project._id ?? project.id;
+    const isPublic = project.repositoryId?.visibility === 'public';
+    setPublishingId(id);
+    try {
+      await api.patch(`/admin/projects/${id}/${isPublic ? 'unpublish' : 'publish'}`);
+      globalMutate('/projects');
+      toast({ title: isPublic ? 'Project unpublished' : 'Project published', description: isPublic ? 'Removed from public showcase.' : 'Now visible on the public showcase.' });
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed.';
+      toast({ variant: 'destructive', title: 'Error', description: msg });
+    } finally {
+      setPublishingId(null);
+    }
+  };
 
   const confirmAssignment = async () => {
     if (!selectedProject || !selectedMentorId) return;
@@ -172,6 +191,7 @@ export default function AssignmentsPage() {
                       <TableHead>Student</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Mentor</TableHead>
+                      <TableHead>Visibility</TableHead>
                       <TableHead>Created</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -205,19 +225,52 @@ export default function AssignmentsPage() {
                           ) : <span className="text-muted-foreground text-sm">Not assigned</span>}
                         </TableCell>
                         <TableCell>
+                          {project.status === 'approved' ? (
+                            <Badge
+                              variant="outline"
+                              className={project.repositoryId?.visibility === 'public'
+                                ? 'gap-1 bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'gap-1 bg-gray-50 text-gray-500 border-gray-200'}
+                            >
+                              {project.repositoryId?.visibility === 'public'
+                                ? <><Globe className="h-3 w-3" /> Public</>
+                                : <><Lock className="h-3 w-3" /> Private</>}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
                           <div className="flex items-center gap-1 text-sm text-muted-foreground">
                             <Calendar className="h-3 w-3" />{new Date(project.createdAt).toLocaleDateString()}
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            className="rounded-full gap-1 h-8"
-                            onClick={() => { setSelectedProject(project); setSelectedMentorId(''); setShowAssignDialog(true); }}
-                          >
-                            <Link2 className="h-3 w-3" />
-                            {project.mentorId ? 'Reassign' : 'Assign'}
-                          </Button>
+                          <div className="flex items-center justify-end gap-2">
+                            {project.status === 'approved' && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className={`rounded-full gap-1 h-8 ${project.repositoryId?.visibility === 'public' ? 'text-gray-600 hover:text-red-600' : 'text-emerald-600 hover:text-emerald-700'}`}
+                                onClick={() => togglePublish(project)}
+                                disabled={publishingId === (project._id ?? project.id)}
+                              >
+                                {publishingId === (project._id ?? project.id)
+                                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                                  : project.repositoryId?.visibility === 'public'
+                                    ? <><Lock className="h-3 w-3" /> Unpublish</>
+                                    : <><Globe className="h-3 w-3" /> Publish</>}
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              className="rounded-full gap-1 h-8"
+                              onClick={() => { setSelectedProject(project); setSelectedMentorId(''); setShowAssignDialog(true); }}
+                            >
+                              <Link2 className="h-3 w-3" />
+                              {project.mentorId ? 'Reassign' : 'Assign'}
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
