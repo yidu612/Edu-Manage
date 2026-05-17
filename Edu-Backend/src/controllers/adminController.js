@@ -2,6 +2,7 @@ import Project from '../models/Project.js';
 import User from '../models/user.model.js';
 import { notify } from '../utils/notify.js';
 import mongoose from 'mongoose';
+import { ROLES } from '../config/roles.js';
 
 export const assignMentor = async (req, res) => {
   try {
@@ -13,7 +14,7 @@ export const assignMentor = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid projectId or mentorId' });
     }
 
-    const mentor = await User.findOne({ _id: mentorId, role: 'teacher' });
+    const mentor = await User.findOne({ _id: mentorId, role: ROLES.TEACHER });
     if (!mentor) return res.status(404).json({ success: false, message: 'Teacher not found' });
 
     const project = await Project.findByIdAndUpdate(

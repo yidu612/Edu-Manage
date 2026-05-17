@@ -4,6 +4,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import cloudinary from "../config/cloudinary.js";
 import upload from "../middleware/multer.js";
+import { ROLES, ALL_ROLES } from "../config/roles.js";
 
 
 export const signUp = async (req, res) => {
@@ -36,10 +37,10 @@ export const signUp = async (req, res) => {
     }
 
     // Validate role
-    if (!["community", "student", "teacher", "admin"].includes(role)) {
+    if (!ALL_ROLES.includes(role)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid role. Must be community, student, teacher, or admin",
+        message: `Invalid role. Must be one of: ${ALL_ROLES.join(", ")}`,
       });
     }
 
@@ -70,7 +71,7 @@ export const signUp = async (req, res) => {
     }
 
     // Add role-specific fields
-    if (role === "student") {
+    if (role === ROLES.STUDENT) {
       Object.assign(userData, {
         department: otherFields.department,
         bio: otherFields.bio,
@@ -237,7 +238,7 @@ export const getProfile = async (req, res) => {
     };
 
     // Add role-specific fields
-    if (user.role === "student") {
+    if (user.role === ROLES.STUDENT) {
       Object.assign(userData, {
         department: user.department,
         bio: user.bio,

@@ -1,6 +1,7 @@
 import express from 'express';
 import { protectRoute } from '../middleware/auth.middleware.js';
 import checkRole from '../middleware/roleCheck.js';
+import { ROLES } from '../config/roles.js';
 import {
   addFeedback,
   getProposalFeedback,
@@ -12,7 +13,7 @@ const router = express.Router();
 
 // All routes are protected and require teacher role
 router.use(protectRoute);
-router.use(checkRole('teacher'));
+router.use(checkRole([ROLES.TEACHER]));
 
 // Add feedback to a proposal
 router.post('/proposal/:proposalId', addFeedback);

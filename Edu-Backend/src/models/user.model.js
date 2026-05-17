@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { ALL_ROLES } from "../config/roles.js";
 
 const userSchema = new mongoose.Schema(
   {
@@ -19,7 +20,7 @@ const userSchema = new mongoose.Schema(
     role: {
       type: String,
       required: true,
-      enum: ["community","student", "teacher", "admin"],
+      enum: ALL_ROLES,
     },
     // Student specific fields
     department: String,
