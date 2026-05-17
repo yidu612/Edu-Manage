@@ -1,5 +1,5 @@
 import natural from 'natural';
-import pdfParse from 'pdf-parse/lib/pdf-parse.js';
+import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import https from 'https';
 import http from 'http';
@@ -28,8 +28,9 @@ export async function extractText(url) {
     const lower = url.toLowerCase().split('?')[0];
 
     if (lower.endsWith('.pdf') || url.includes('/raw/') || url.includes('pdf')) {
-      const data = await pdfParse(buf);
-      return data.text ?? '';
+      const parser = new PDFParse({ data: buf });
+      const result = await parser.getText();
+      return result.text ?? '';
     }
     if (lower.endsWith('.docx') || lower.endsWith('.doc')) {
       const result = await mammoth.extractRawText({ buffer: buf });
