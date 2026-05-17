@@ -4,6 +4,7 @@ import {
   getPendingTeachers,
   approveTeacher,
   rejectTeacher,
+  getAnalytics,
   createDefenseSession,
   getAllDefenseSessions,
   finalizeDefenseSession,
@@ -33,5 +34,6 @@ router.patch('/projects/:id/publish',               publishProject);
 router.patch('/projects/:id/unpublish',             unpublishProject);
 
 router.get('/categories', (_req, res) => res.json({ success: true, data: PROJECT_CATEGORIES }));
+router.get('/analytics',  getAnalytics);
 
 export default router;

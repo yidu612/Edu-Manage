@@ -26,7 +26,22 @@ import {
   GraduationCap,
   AlertCircle,
   Loader2,
+  BarChart2,
+  TrendingUp,
 } from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from 'recharts';
 import api from '@/lib/api';
 
 const fetcher = (url: string) => api.get(url).then((r) => r.data);
@@ -48,6 +63,24 @@ type Teacher = {
   email: string;
 };
 
+type AnalyticsData = {
+  totals: { users: number; projects: number; proposals: number };
+  projectsByStatus: { _id: string; count: number }[];
+  submissionsPerMonth: { _id: { month: number; year: number }; count: number }[];
+  usersByRole: { _id: string; count: number }[];
+  avgSimilarityScore: number;
+};
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const STATUS_COLORS: Record<string, string> = {
+  draft:        '#94a3b8',
+  submitted:    '#f59e0b',
+  under_review: '#3b82f6',
+  approved:     '#10b981',
+  rejected:     '#ef4444',
+};
+
 const statusConfig: Record<string, { label: string; color: string; Icon: typeof Clock }> = {
   submitted:    { label: 'Pending',      color: 'bg-amber-100 text-amber-700 border-amber-200',   Icon: Clock },
   under_review: { label: 'Under Review', color: 'bg-blue-100 text-blue-700 border-blue-200',      Icon: Eye },
@@ -62,9 +95,11 @@ const getInitials = (name: string) =>
 export default function AdminDashboard() {
   const { data: projectsData, isLoading: loadingProjects } = useSWR('/projects', fetcher);
   const { data: teachersData } = useSWR('/users/teachers', fetcher);
+  const { data: analyticsData } = useSWR('/admin/analytics', fetcher, { refreshInterval: 300_000 });
 
   const projects: Project[] = projectsData?.data ?? [];
   const teachers: Teacher[] = teachersData?.data ?? [];
+  const analytics: AnalyticsData | null = analyticsData?.data ?? null;
 
   const stats = useMemo(() => ({
     needsAssignment: projects.filter((p) => !p.mentorId).length,
@@ -84,6 +119,24 @@ export default function AdminDashboard() {
     })),
     [teachers, projects],
   );
+
+  // Prepare chart data
+  const barData = useMemo(() => {
+    if (!analytics) return [];
+    return analytics.submissionsPerMonth.map((d) => ({
+      name:  `${MONTHS[d._id.month - 1]} ${d._id.year}`,
+      count: d.count,
+    }));
+  }, [analytics]);
+
+  const pieData = useMemo(() => {
+    if (!analytics) return [];
+    return analytics.projectsByStatus.map((d) => ({
+      name:  d._id.replace('_', ' '),
+      value: d.count,
+      fill:  STATUS_COLORS[d._id] ?? '#94a3b8',
+    }));
+  }, [analytics]);
 
   return (
     <DashboardLayout role="admin">
@@ -160,6 +213,86 @@ export default function AdminDashboard() {
             </CardHeader>
           </Card>
         </div>
+
+        {/* Analytics Charts */}
+        {analytics && (
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Submissions per Month */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <BarChart2 className="h-5 w-5 text-primary" />
+                  Submissions per Month
+                </CardTitle>
+                <CardDescription>Projects submitted over the past year</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {barData.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-48 text-muted-foreground text-sm">
+                    <TrendingUp className="h-10 w-10 mb-2 opacity-30" />
+                    No submission data yet
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={barData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                      <Tooltip
+                        contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+                        formatter={(v) => [v, 'Submissions']}
+                      />
+                      <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Project Status Distribution */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-primary" />
+                  Project Status Distribution
+                </CardTitle>
+                <CardDescription>
+                  {analytics.totals.projects} total · {analytics.totals.proposals} proposals · {analytics.totals.users} users
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {pieData.length === 0 ? (
+                  <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">No data</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={55}
+                        outerRadius={85}
+                        paddingAngle={3}
+                        dataKey="value"
+                        label={({ name, value }) => `${name}: ${value}`}
+                        labelLine={false}
+                      >
+                        {pieData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+                        formatter={(v, name) => [v, String(name)]}
+                      />
+                      <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Main Content */}
         <div className="grid gap-6 lg:grid-cols-3">

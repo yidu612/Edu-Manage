@@ -2,6 +2,7 @@ import Project from '../models/Project.js';
 import User from '../models/user.model.js';
 import Repository from '../models/Repository.js';
 import DefenseSession from '../models/DefenseSession.js';
+import Proposal from '../models/Proposal.js';
 import { notify } from '../utils/notify.js';
 import mongoose from 'mongoose';
 import { ROLES } from '../config/roles.js';
@@ -59,6 +60,59 @@ export const rejectTeacher = async (req, res) => {
     res.json({ success: true, message: 'Teacher registration rejected', data: user });
   } catch (err) {
     console.error('rejectTeacher error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+export const getAnalytics = async (req, res) => {
+  try {
+    const [
+      totalUsers,
+      totalProjects,
+      totalProposals,
+      projectsByStatus,
+      submissionsPerMonth,
+      usersByRole,
+      avgSimilarityRaw,
+    ] = await Promise.all([
+      User.countDocuments(),
+      Project.countDocuments(),
+      Proposal.countDocuments(),
+      Project.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
+      Project.aggregate([
+        { $match: { submissionDate: { $ne: null } } },
+        {
+          $group: {
+            _id:   { month: { $month: '$submissionDate' }, year: { $year: '$submissionDate' } },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1 } },
+        { $limit: 12 },
+      ]),
+      User.aggregate([{ $group: { _id: '$role', count: { $sum: 1 } } }]),
+      Project.aggregate([
+        { $match: { similarityScore: { $gt: 0 } } },
+        { $group: { _id: null, avg: { $avg: '$similarityScore' } } },
+      ]),
+    ]);
+
+    const avgSimilarity = avgSimilarityRaw[0]?.avg ?? 0;
+
+    res.json({
+      success: true,
+      data: {
+        totals: { users: totalUsers, projects: totalProjects, proposals: totalProposals },
+        projectsByStatus,
+        submissionsPerMonth,
+        usersByRole,
+        avgSimilarityScore: Math.round(avgSimilarity * 10) / 10,
+      },
+    });
+  } catch (err) {
+    console.error('getAnalytics error:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 };
