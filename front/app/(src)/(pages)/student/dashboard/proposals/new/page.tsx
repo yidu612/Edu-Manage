@@ -10,7 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Send, Loader2, Sparkles, Save, Paperclip } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Sparkles, Save, Paperclip, Tag } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/app/(src)/hooks/use-toast';
 import { AICheckerModal } from '@/app/(src)/components/modals/AICheckerModal';
 import api from '@/lib/api';
@@ -26,7 +27,9 @@ export default function NewProposalPage() {
   const [fileName, setFileName] = useState('');
 
   const { data: teachersData } = useSWR('/users/teachers', fetcher);
+  const { data: categoriesData } = useSWR('/admin/categories', fetcher);
   const teachers: Array<{ id: string; name: string; department: string }> = teachersData?.data ?? [];
+  const categories: string[] = categoriesData?.data ?? [];
 
   const [formData, setFormData] = useState({
     title: '',
@@ -36,10 +39,32 @@ export default function NewProposalPage() {
     department: '',
     expectedOutcomes: '',
     teacherId: '',
+    category: '',
+    keywords: '',
   });
+  const [keywordInput, setKeywordInput] = useState('');
+  const [keywordList, setKeywordList] = useState<string[]>([]);
+
+  const addKeyword = () => {
+    const kw = keywordInput.trim();
+    if (kw && !keywordList.includes(kw) && keywordList.length < 10) {
+      setKeywordList((prev) => [...prev, kw]);
+      setKeywordInput('');
+    }
+  };
+
+  const removeKeyword = (kw: string) => setKeywordList((prev) => prev.filter((k) => k !== kw));
 
   const handleChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const buildFormData = (status?: string) => {
+    const fd = new FormData();
+    Object.entries(formData).forEach(([k, v]) => { if (v) fd.append(k, v); });
+    if (status) fd.set('status', status);
+    keywordList.forEach((kw) => fd.append('keywords', kw));
+    return fd;
   };
 
   const handleSaveDraft = async () => {
@@ -48,10 +73,7 @@ export default function NewProposalPage() {
       return;
     }
     try {
-      const fd = new FormData();
-      Object.entries(formData).forEach(([k, v]) => { if (v) fd.append(k, v); });
-      fd.set('status', 'draft');
-      await api.post('/proposals/submit', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      await api.post('/proposals/submit', buildFormData('draft'), { headers: { 'Content-Type': 'multipart/form-data' } });
       toast({ title: 'Draft Saved', description: 'Your proposal draft has been saved.' });
       router.push('/student/dashboard/proposals');
     } catch (err: unknown) {
@@ -69,8 +91,7 @@ export default function NewProposalPage() {
 
     setIsLoading(true);
     try {
-      const fd = new FormData();
-      Object.entries(formData).forEach(([k, v]) => { if (v) fd.append(k, v); });
+      const fd = buildFormData();
       if (fileRef.current?.files?.[0]) fd.append('proposalFile', fileRef.current.files[0]);
 
       await api.post('/proposals/submit', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -130,6 +151,50 @@ export default function NewProposalPage() {
                     <SelectItem value="electrical_engineering">Electrical Engineering</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label className="font-semibold">Category <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Select value={formData.category} onValueChange={(v) => handleChange('category', v)}>
+                    <SelectTrigger className="h-12 rounded-xl"><SelectValue placeholder="Select a category" /></SelectTrigger>
+                    <SelectContent>
+                      {categories.map((cat) => (
+                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="font-semibold">Keywords <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Add a keyword…"
+                      className="h-12 rounded-xl"
+                      value={keywordInput}
+                      onChange={(e) => setKeywordInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addKeyword(); } }}
+                    />
+                    <Button type="button" variant="outline" className="h-12 px-3 rounded-xl" onClick={addKeyword}>
+                      <Tag className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {keywordList.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {keywordList.map((kw) => (
+                        <Badge
+                          key={kw}
+                          variant="secondary"
+                          className="cursor-pointer hover:bg-destructive/10 hover:text-destructive text-xs"
+                          onClick={() => removeKeyword(kw)}
+                        >
+                          {kw} ×
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-2">

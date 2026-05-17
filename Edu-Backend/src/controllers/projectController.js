@@ -46,6 +46,7 @@ export const createProject = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid mentorId' });
     }
 
+    const { category, keywords } = req.body;
     const project = new Project({
       title,
       studentId: req.user._id,
@@ -53,6 +54,8 @@ export const createProject = async (req, res) => {
       objectives,
       abstract,
       status: 'draft',
+      category:  category || undefined,
+      keywords:  Array.isArray(keywords) ? keywords : (keywords ? [keywords] : []),
     });
 
     const saved = await project.save();
@@ -77,7 +80,7 @@ export const updateProject = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const allowed = ['title', 'objectives', 'abstract', 'status', 'progressPercentage'];
+    const allowed = ['title', 'objectives', 'abstract', 'status', 'progressPercentage', 'category', 'keywords'];
     const updates = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];

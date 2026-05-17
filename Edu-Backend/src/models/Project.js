@@ -14,6 +14,8 @@ const projectSchema = new mongoose.Schema(
       enum: ['draft', 'submitted', 'under_review', 'approved', 'rejected'],
       default: 'draft',
     },
+    category:           { type: String },
+    keywords:           { type: [String], default: [] },
     similarityScore:    { type: Number, min: 0, max: 100, default: 0 },
     submissionDate:     { type: Date },
     progressPercentage: { type: Number, min: 0, max: 100, default: 0 },

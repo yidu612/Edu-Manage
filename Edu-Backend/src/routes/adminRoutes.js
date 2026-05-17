@@ -13,6 +13,7 @@ import {
 import { protectRoute } from '../middleware/auth.middleware.js';
 import checkRole from '../middleware/roleCheck.js';
 import { ROLES } from '../config/roles.js';
+import { PROJECT_CATEGORIES } from '../config/projectCategories.js';
 
 const router = express.Router();
 
@@ -30,5 +31,7 @@ router.patch('/defense-sessions/:id/finalize',      finalizeDefenseSession);
 
 router.patch('/projects/:id/publish',               publishProject);
 router.patch('/projects/:id/unpublish',             unpublishProject);
+
+router.get('/categories', (_req, res) => res.json({ success: true, data: PROJECT_CATEGORIES }));
 
 export default router;
