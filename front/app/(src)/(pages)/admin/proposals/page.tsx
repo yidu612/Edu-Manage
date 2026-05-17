@@ -21,12 +21,23 @@ import {
 import {
   FileText, Search, CheckCircle, XCircle, Clock, Eye, Loader2,
   GraduationCap, Building2, Calendar, Paperclip, Download, AlignLeft,
-  FolderOpen, ArrowRight,
+  FolderOpen, ArrowRight, Layers,
 } from 'lucide-react';
 import { useToast } from '@/app/(src)/hooks/use-toast';
 import api from '@/lib/api';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 
 const fetcher = (url: string) => api.get(url).then((r) => r.data);
+
+type ProjectGroup = {
+  _id: string;
+  name: string;
+  academicYear?: string;
+  stages: { order: number; name: string; deadline: string }[];
+  isLocked: boolean;
+};
 
 type Attachment = { name: string; url: string; type: string; size: number };
 
@@ -80,8 +91,12 @@ export default function AdminProposalsPage() {
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState<'approved' | 'rejected' | null>(null);
 
+  const [groupId, setGroupId] = useState('');
+
   const { data, isLoading } = useSWR('/proposals', fetcher);
+  const { data: groupsData } = useSWR('/admin/groups', fetcher);
   const proposals: Proposal[] = data?.data ?? [];
+  const groups: ProjectGroup[] = groupsData?.data ?? [];
 
   const stats = useMemo(() => ({
     total:    proposals.length,
@@ -103,14 +118,23 @@ export default function AdminProposalsPage() {
   const openDetail = (p: Proposal) => {
     setSelected(p);
     setComment('');
+    setGroupId('');
     setSubmitting(null);
   };
 
   const handleReview = async (status: 'approved' | 'rejected') => {
     if (!selected) return;
+    if (status === 'approved' && !groupId) {
+      toast({ variant: 'destructive', title: 'Group required', description: 'Select a Project Group before approving.' });
+      return;
+    }
     setSubmitting(status);
     try {
-      await api.put(`/proposals/${selected._id}/review`, { status, comment: comment.trim() || undefined });
+      await api.put(`/proposals/${selected._id}/review`, {
+        status,
+        comment: comment.trim() || undefined,
+        groupId: status === 'approved' ? groupId : undefined,
+      });
       toast({
         title: status === 'approved' ? 'Proposal Approved' : 'Proposal Rejected',
         description: `"${selected.title}" has been ${status}.`,
@@ -385,6 +409,30 @@ export default function AdminProposalsPage() {
                 {selected.status === 'pending' && (
                   <div className="rounded-xl border p-4 space-y-3 bg-muted/20">
                     <p className="text-sm font-semibold">Review Decision</p>
+
+                    {/* Group selector — required for approval */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                        <Layers className="h-3.5 w-3.5" /> Project Group (required to approve)
+                      </label>
+                      <Select value={groupId} onValueChange={setGroupId}>
+                        <SelectTrigger className="rounded-xl text-sm">
+                          <SelectValue placeholder="Select a project group…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {groups.length === 0 ? (
+                            <SelectItem value="none" disabled>
+                              No groups available — create one first
+                            </SelectItem>
+                          ) : groups.map((g) => (
+                            <SelectItem key={g._id} value={g._id}>
+                              {g.name}{g.academicYear ? ` (${g.academicYear})` : ''} — {g.stages.length} stages
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     <Textarea
                       placeholder="Optional: add a comment or feedback for the student…"
                       value={comment}
@@ -395,7 +443,7 @@ export default function AdminProposalsPage() {
                       <Button
                         className="flex-1 rounded-full bg-emerald-600 hover:bg-emerald-700 gap-2"
                         onClick={() => handleReview('approved')}
-                        disabled={!!submitting}
+                        disabled={!!submitting || !groupId}
                       >
                         {submitting === 'approved'
                           ? <Loader2 className="h-4 w-4 animate-spin" />

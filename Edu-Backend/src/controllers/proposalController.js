@@ -2,6 +2,8 @@ import cloudinary from "../config/cloudinary.js";
 import upload from "../middleware/multer.js";
 import Proposal from "../models/Proposal.js";
 import Project from "../models/Project.js";
+import ProjectGroup from "../models/ProjectGroup.js";
+import ProjectStageProgress from "../models/ProjectStageProgress.js";
 import User from "../models/user.model.js";
 import mongoose from "mongoose";
 import { computeSimilarity } from "../utils/similarity.js";
@@ -219,13 +221,54 @@ export const reviewProposal = async (req, res) => {
     // Advance or reset the linked project based on the review decision
     if (proposal.projectId) {
       if (status === 'approved') {
-        await Project.findByIdAndUpdate(proposal.projectId, { status: 'under_review' });
-        await notify({
-          recipientId:      proposal.student,
-          notificationType: 'system',
-          message:          `Your proposal "${proposal.title}" was approved! Your project is now active.`,
-          priority:         'high',
-        });
+        // Admin must supply a Project Group when approving
+        if (req.user.role === 'admin') {
+          const { groupId } = req.body;
+          if (!groupId) {
+            return res.status(400).json({ success: false, message: 'groupId is required when approving a proposal as admin' });
+          }
+          const group = await ProjectGroup.findById(groupId);
+          if (!group) return res.status(404).json({ success: false, message: 'Project group not found' });
+          if (!group.stages || group.stages.length < 2) {
+            return res.status(400).json({ success: false, message: 'Project group must have at least 2 stages' });
+          }
+
+          const sortedStages = [...group.stages].sort((a, b) => a.order - b.order);
+
+          // Build ProjectStageProgress records: stage 1 = completed (proposal approved), stage 2 = active, rest = locked
+          const stageDocs = sortedStages.map((s, index) => ({
+            projectId:  proposal.projectId,
+            groupId:    group._id,
+            stageOrder: s.order,
+            stageName:  s.name,
+            deadline:   s.deadline,
+            status:     index === 0 ? 'completed' : index === 1 ? 'active' : 'locked',
+          }));
+          await ProjectStageProgress.insertMany(stageDocs);
+
+          // Lock the group and increment its project count
+          await ProjectGroup.findByIdAndUpdate(groupId, { isLocked: true, $inc: { projectCount: 1 } });
+
+          // Project status: 'under_review' if only 2 stages (last stage now active), else 'active'
+          const newProjectStatus = sortedStages.length === 2 ? 'under_review' : 'active';
+          await Project.findByIdAndUpdate(proposal.projectId, { status: newProjectStatus, groupId: group._id });
+
+          await notify({
+            recipientId:      proposal.student,
+            notificationType: 'system',
+            message:          `Your proposal "${proposal.title}" was approved! Your project is now active — proceed to ${sortedStages[1].name}.`,
+            priority:         'high',
+          });
+        } else {
+          // Teacher approval path (no group assignment)
+          await Project.findByIdAndUpdate(proposal.projectId, { status: 'active' });
+          await notify({
+            recipientId:      proposal.student,
+            notificationType: 'system',
+            message:          `Your proposal "${proposal.title}" was approved by your advisor!`,
+            priority:         'high',
+          });
+        }
       } else if (status === 'rejected') {
         await Project.findByIdAndUpdate(proposal.projectId, { status: 'draft', proposalId: null });
         await notify({

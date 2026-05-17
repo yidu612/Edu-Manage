@@ -20,6 +20,8 @@ import {
   LogOut,
   CalendarCheck,
   FolderGit2,
+  Layers,
+  ClipboardCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -48,21 +50,24 @@ const navigationItems = {
   teacher: [
     { name: 'Dashboard',          href: '/teacher/dashboard',                        icon: LayoutDashboard },
     { name: 'Assigned Proposals', href: '/teacher/dashboard/assigned-proposals',     icon: FileText },
+    { name: 'Stage Reviews',      href: '/teacher/dashboard/stage-reviews',          icon: ClipboardCheck },
     { name: 'Teams & Requests',   href: '/teacher/dashboard/teams',                  icon: Users },
     { name: 'Reviews',            href: '/teacher/dashboard/documentation-review',   icon: CheckCircle },
     { name: 'Notifications',      href: '/notifications',                            icon: Bell },
     { name: 'Settings',           href: '/teacher/dashboard/settings',               icon: Settings },
   ],
   admin: [
-    { name: 'Dashboard',      href: '/admin/dashboard',    icon: LayoutDashboard },
-    { name: 'Proposals',      href: '/admin/proposals',    icon: FileText },
-    { name: 'Assign Advisors',href: '/admin/assignments',  icon: UserCog },
-    { name: 'Teams Overview', href: '/admin/teams',        icon: Users },
-    { name: 'Defense Sessions',href: '/admin/defense',     icon: CalendarCheck },
-    { name: 'Advisors',       href: '/admin/advisors',     icon: GraduationCap },
-    { name: 'Departments',    href: '/admin/departments',  icon: Building2 },
-    { name: 'Notifications',  href: '/notifications',      icon: Bell },
-    { name: 'Settings',       href: '/admin/settings',     icon: Settings },
+    { name: 'Dashboard',      href: '/admin/dashboard',       icon: LayoutDashboard },
+    { name: 'Proposals',      href: '/admin/proposals',       icon: FileText },
+    { name: 'Project Groups', href: '/admin/groups',          icon: Layers },
+    { name: 'Stage Reviews',  href: '/admin/stage-reviews',   icon: ClipboardCheck },
+    { name: 'Assign Advisors',href: '/admin/assignments',     icon: UserCog },
+    { name: 'Teams Overview', href: '/admin/teams',           icon: Users },
+    { name: 'Defense Sessions',href: '/admin/defense',        icon: CalendarCheck },
+    { name: 'Advisors',       href: '/admin/advisors',        icon: GraduationCap },
+    { name: 'Departments',    href: '/admin/departments',     icon: Building2 },
+    { name: 'Notifications',  href: '/notifications',         icon: Bell },
+    { name: 'Settings',       href: '/admin/settings',        icon: Settings },
   ],
   coordinator: [
     { name: 'Dashboard',      href: '/coordinator/dashboard',          icon: LayoutDashboard },

@@ -11,8 +11,10 @@ const projectSchema = new mongoose.Schema(
     abstract:   { type: String },
     status: {
       type: String,
-      enum: ['draft', 'submitted', 'under_review', 'approved', 'rejected'],
-      default: 'draft',
+      // Lifecycle: pending → active → under_review → completed
+      // Legacy values kept to avoid breaking existing data
+      enum: ['pending', 'active', 'under_review', 'completed', 'rejected', 'draft', 'submitted', 'approved'],
+      default: 'pending',
     },
     category:           { type: String },
     keywords:           { type: [String], default: [] },
@@ -22,6 +24,7 @@ const projectSchema = new mongoose.Schema(
     progressPercentage: { type: Number, min: 0, max: 100, default: 0 },
     repositoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Repository' },
     proposalId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Proposal', default: null },
+    groupId:      { type: mongoose.Schema.Types.ObjectId, ref: 'ProjectGroup', default: null },
   },
   { timestamps: true }
 );

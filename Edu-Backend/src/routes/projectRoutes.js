@@ -17,13 +17,23 @@ import {
   saveProjectLinks,
   uploadDocFile,
 } from '../controllers/documentationController.js';
+import {
+  uploadStageFile,
+  getProjectStages,
+  submitStage,
+  advisorReviewStage,
+  adminReviewStage,
+  getPendingStageReviews,
+} from '../controllers/stageController.js';
 import { getReviews, upsertReview } from '../controllers/reviewController.js';
-import { protectRoute, optionalAuth } from '../middleware/auth.middleware.js';
+import { protectRoute } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
-// Project CRUD (all require auth)
 router.use(protectRoute);
+
+// Stage review queue — must come before /:id to avoid route conflict
+router.get('/stages/pending', getPendingStageReviews);
 
 router.get('/',     getProjects);
 router.post('/',    createProject);
@@ -43,8 +53,14 @@ router.delete('/:id/documentation/:docId',            deleteDocumentation);
 router.put('/:id/documentation/:docId/status',        updateDocumentationStatus);
 router.put('/:id/links',                              saveProjectLinks);
 
-// Reviews (read is also available on public routes; post requires auth via router.use above)
+// Reviews
 router.get('/:id/reviews',  getReviews);
 router.post('/:id/reviews', upsertReview);
+
+// Stage progress
+router.get('/:id/stages',                                    getProjectStages);
+router.post('/:id/stages/:order/submit', uploadStageFile,    submitStage);
+router.patch('/:id/stages/:order/advisor-review',            advisorReviewStage);
+router.patch('/:id/stages/:order/admin-review',              adminReviewStage);
 
 export default router;

@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import {
   FolderGit2, Plus, Search, GraduationCap, Calendar, FileText,
-  ArrowRight, Loader2, CheckCircle2, Clock, Send, BookOpen,
+  ArrowRight, Loader2, CheckCircle2, Clock, Send, BookOpen, Layers,
 } from 'lucide-react';
 import { useToast } from '@/app/(src)/hooks/use-toast';
 import api from '@/lib/api';
@@ -29,18 +29,22 @@ type Project = {
   _id: string;
   title: string;
   abstract?: string;
-  status: 'draft' | 'submitted' | 'under_review' | 'approved' | 'rejected';
+  status: 'draft' | 'pending' | 'submitted' | 'active' | 'under_review' | 'approved' | 'rejected' | 'completed';
   mentorId?: { fullName?: string; name?: string } | null;
   proposalId?: Proposal | null;
+  groupId?: string | null;
   createdAt: string;
 };
 
 const PROJECT_STATUS: Record<string, { label: string; cls: string }> = {
-  draft:        { label: 'Draft',        cls: 'bg-gray-100 text-gray-700' },
-  submitted:    { label: 'Under Review', cls: 'bg-amber-100 text-amber-700' },
-  under_review: { label: 'Active',       cls: 'bg-emerald-100 text-emerald-700' },
-  approved:     { label: 'Approved',     cls: 'bg-blue-100 text-blue-700' },
-  rejected:     { label: 'Rejected',     cls: 'bg-red-100 text-red-700' },
+  draft:        { label: 'Draft',           cls: 'bg-gray-100 text-gray-700' },
+  pending:      { label: 'Pending',         cls: 'bg-gray-100 text-gray-700' },
+  submitted:    { label: 'Proposal Review', cls: 'bg-amber-100 text-amber-700' },
+  active:       { label: 'Active',          cls: 'bg-emerald-100 text-emerald-700' },
+  under_review: { label: 'Final Review',    cls: 'bg-blue-100 text-blue-700' },
+  approved:     { label: 'Approved',        cls: 'bg-blue-100 text-blue-700' },
+  rejected:     { label: 'Rejected',        cls: 'bg-red-100 text-red-700' },
+  completed:    { label: 'Completed',       cls: 'bg-purple-100 text-purple-700' },
 };
 
 const PROPOSAL_STATUS: Record<string, { label: string; cls: string }> = {
@@ -157,7 +161,8 @@ export default function StudentProjectsPage() {
               const proposalMeta = proposal ? PROPOSAL_STATUS[proposal.status] : null;
               const advisorName = project.mentorId?.fullName ?? project.mentorId?.name ?? null;
               const canSubmitProposal = !proposal || proposal.status === 'rejected';
-              const isActive = project.status === 'under_review' || project.status === 'approved';
+              const isActive = ['active', 'under_review', 'approved', 'completed'].includes(project.status);
+              const hasStages = !!project.groupId;
 
               return (
                 <Card
@@ -204,8 +209,18 @@ export default function StudentProjectsPage() {
                   </CardContent>
 
                   <CardFooter className="flex flex-col gap-2 pt-0 px-5 pb-5">
-                    {/* Active project — manage documentation */}
-                    {isActive && (
+                    {/* View stage progress */}
+                    {hasStages && (
+                      <Button
+                        className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 gap-2 h-9 text-sm"
+                        onClick={() => router.push(`/student/dashboard/projects/${id}/stages`)}
+                      >
+                        <Layers className="h-4 w-4" /> View Stages
+                      </Button>
+                    )}
+
+                    {/* Active project — manage documentation (legacy) */}
+                    {isActive && !hasStages && (
                       <Button
                         className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 gap-2 h-9 text-sm"
                         onClick={() => router.push(`/student/dashboard/projects/${id}/documentation`)}
