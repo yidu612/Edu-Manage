@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
@@ -17,8 +17,12 @@ import {
   X,
   CheckCircle,
   Bell,
+  LogOut,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/context/AuthContext';
 
 type UserRole = 'student' | 'teacher' | 'admin';
 
@@ -30,68 +34,57 @@ interface SidebarProps {
 
 const navigationItems = {
   student: [
-    { name: 'Dashboard', href: '/student/dashboard', icon: LayoutDashboard },
-    {
-      name: 'My Proposals',
-      href: '/student/dashboard/proposals',
-      icon: FileText,
-    },
-    { name: 'Group Members', href: '/student/dashboard/group', icon: Users },
-    {
-      name: 'Discussions',
-      href: '/student/dashboard/discussions',
-      icon: MessageSquare,
-    },
-    {
-      name: 'Documents',
-      href: '/student/dashboard/documentation',
-      icon: Upload,
-    },
-    {
-      name: 'Notifications',
-      href: '/notifications',
-      icon: Bell,
-    },
-    { name: 'Settings', href: '/student/dashboard/settings', icon: Settings },
+    { name: 'Dashboard',     href: '/student/dashboard',                icon: LayoutDashboard },
+    { name: 'My Proposals',  href: '/student/dashboard/proposals',      icon: FileText },
+    { name: 'Group Members', href: '/student/dashboard/group',          icon: Users },
+    { name: 'Discussions',   href: '/student/dashboard/discussions',    icon: MessageSquare },
+    { name: 'Documents',     href: '/student/dashboard/documentation',  icon: Upload },
+    { name: 'Notifications', href: '/notifications',                    icon: Bell },
+    { name: 'Settings',      href: '/student/dashboard/settings',       icon: Settings },
   ],
   teacher: [
-    { name: 'Dashboard', href: '/teacher/dashboard', icon: LayoutDashboard },
-    {
-      name: 'Assigned Proposals',
-      href: '/teacher/dashboard/assigned-proposals',
-      icon: FileText,
-    },
-    { name: 'Teams & Requests', href: '/teacher/dashboard/teams', icon: Users },
-    {
-      name: 'Reviews',
-      href: '/teacher/dashboard/documentation-review',
-      icon: CheckCircle,
-    },
-    {
-      name: 'Notifications',
-      href: '/notifications',
-      icon: Bell,
-    },
-    { name: 'Settings', href: '/teacher/dashboard/settings', icon: Settings },
+    { name: 'Dashboard',          href: '/teacher/dashboard',                        icon: LayoutDashboard },
+    { name: 'Assigned Proposals', href: '/teacher/dashboard/assigned-proposals',     icon: FileText },
+    { name: 'Teams & Requests',   href: '/teacher/dashboard/teams',                  icon: Users },
+    { name: 'Reviews',            href: '/teacher/dashboard/documentation-review',   icon: CheckCircle },
+    { name: 'Notifications',      href: '/notifications',                            icon: Bell },
+    { name: 'Settings',           href: '/teacher/dashboard/settings',               icon: Settings },
   ],
   admin: [
-    { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
-    { name: 'Assign Advisors', href: '/admin/assignments', icon: UserCog },
-    { name: 'Teams Overview', href: '/admin/teams', icon: Users },
-    { name: 'Advisors', href: '/admin/advisors', icon: GraduationCap },
-    {
-      name: 'Notifications',
-      href: '/notifications',
-      icon: Bell,
-    },
-    { name: 'Settings', href: '/admin/settings', icon: Settings },
+    { name: 'Dashboard',      href: '/admin/dashboard',    icon: LayoutDashboard },
+    { name: 'Assign Advisors',href: '/admin/assignments',  icon: UserCog },
+    { name: 'Teams Overview', href: '/admin/teams',        icon: Users },
+    { name: 'Advisors',       href: '/admin/advisors',     icon: GraduationCap },
+    { name: 'Departments',    href: '/admin/departments',  icon: Building2 },
+    { name: 'Notifications',  href: '/notifications',      icon: Bell },
+    { name: 'Settings',       href: '/admin/settings',     icon: Settings },
   ],
 };
 
+const roleBadgeColors: Record<UserRole, string> = {
+  student: 'bg-blue-100 text-blue-700',
+  teacher: 'bg-emerald-100 text-emerald-700',
+  admin:   'bg-purple-100 text-purple-700',
+};
+
+function getInitials(name: string = '') {
+  return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
+}
+
+// Dashboard root paths for exact-match detection
+const dashboardRoots = ['/student/dashboard', '/teacher/dashboard', '/admin/dashboard'];
+
 export function DashboardSidebar({ role, isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
-  // Fallback to student if role is undefined or invalid
-  const items = navigationItems[role] || navigationItems.student;
+  const router = useRouter();
+  const { user, logout } = useAuth();
+
+  const items = navigationItems[role] ?? navigationItems.student;
+
+  const handleLogout = () => {
+    onClose();
+    logout();
+  };
 
   return (
     <>
@@ -106,75 +99,87 @@ export function DashboardSidebar({ role, isOpen, onClose }: SidebarProps) {
       {/* Sidebar Container */}
       <aside
         className={cn(
-          'fixed left-0 top-16 z-50 h-[calc(100vh-4rem)] w-64 border-r bg-card transition-transform duration-300 lg:translate-x-0 shadow-lg lg:shadow-none',
+          'fixed left-0 top-16 z-50 h-[calc(100vh-4rem)] w-64 border-r bg-card transition-transform duration-300 lg:translate-x-0 shadow-lg lg:shadow-none flex flex-col',
           isOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        <div className="flex h-full flex-col">
-          {/* Mobile Header (Only visible inside sidebar on mobile) */}
-          <div className="flex items-center justify-between border-b p-4 lg:hidden">
-            <div className="flex items-center gap-2">
-              <div className="bg-primary p-1.5 rounded-lg">
-                <GraduationCap className="h-4 w-4 text-primary-foreground" />
-              </div>
-              <span className="font-bold">Project Hub</span>
+        {/* Mobile Header */}
+        <div className="flex items-center justify-between border-b p-4 lg:hidden">
+          <div className="flex items-center gap-2">
+            <div className="bg-primary p-1.5 rounded-lg">
+              <GraduationCap className="h-4 w-4 text-primary-foreground" />
             </div>
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="h-5 w-5" />
-            </Button>
+            <span className="font-bold">Project Hub</span>
           </div>
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
 
-          {/* Nav Links */}
-          <nav className="flex-1 space-y-1 p-3 overflow-y-auto">
-            {items.map((item) => {
-              // Exact match for dashboard root, prefix match for others
-              const isActive =
-                pathname === item.href ||
-                (item.href !== '/student/dashboard' &&
-                  item.href !== '/teacher/dashboard' &&
-                  item.href !== '/admin/dashboard' &&
-                  pathname.startsWith(item.href));
+        {/* User Profile Card */}
+        {user && (
+          <div className="p-4 border-b">
+            <div className="flex items-center gap-3">
+              <Avatar className="h-10 w-10 shrink-0">
+                <AvatarFallback className="bg-primary/10 text-primary font-bold text-sm">
+                  {getInitials(user.name)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-sm truncate leading-tight">{user.name}</p>
+                <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                <Badge className={cn('mt-1 text-[10px] px-1.5 py-0 border-0 font-medium capitalize', roleBadgeColors[role])}>
+                  {user.role}
+                </Badge>
+              </div>
+            </div>
+          </div>
+        )}
 
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  onClick={() => {
-                    // Close sidebar on mobile when a link is clicked
-                    if (window.innerWidth < 1024) onClose();
-                  }}
-                  className={cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
-                    isActive
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                  )}
-                >
-                  <item.icon
-                    className={cn(
-                      'h-5 w-5',
-                      isActive ? 'text-primary' : 'text-muted-foreground',
-                    )}
-                  />
-                  {item.name}
-                </Link>
-              );
-            })}
-          </nav>
+        {/* Nav Links */}
+        <nav className="flex-1 space-y-1 p-3 overflow-y-auto">
+          {items.map((item) => {
+            const isActive =
+              pathname === item.href ||
+              (!dashboardRoots.includes(item.href) && pathname.startsWith(item.href));
 
-          {/* Footer */}
-          <div className="border-t p-4">
-            <Button
-              variant="outline"
-              className="w-full justify-start gap-2 rounded-full"
-              asChild
-            >
-              <Link href="/">
-                <Globe className="h-4 w-4" />
-                View Public Site
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                onClick={() => { if (window.innerWidth < 1024) onClose(); }}
+                className={cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
+                  isActive
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                <item.icon className={cn('h-5 w-5 shrink-0', isActive ? 'text-primary' : 'text-muted-foreground')} />
+                {item.name}
               </Link>
-            </Button>
-          </div>
+            );
+          })}
+        </nav>
+
+        {/* Footer */}
+        <div className="border-t p-3 space-y-1">
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 rounded-lg px-3 py-2.5 h-auto text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={() => router.push('/')}
+          >
+            <Globe className="h-5 w-5 shrink-0" />
+            View Public Site
+          </Button>
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 rounded-lg px-3 py-2.5 h-auto text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700"
+            onClick={handleLogout}
+          >
+            <LogOut className="h-5 w-5 shrink-0" />
+            Sign Out
+          </Button>
         </div>
       </aside>
     </>
