@@ -26,7 +26,8 @@ export const uploadStageFile = (req, res, next) => {
 export const getProjectStages = async (req, res) => {
   try {
     const project = await Project.findById(req.params.id)
-      .populate('groupId', 'name academicYear stages');
+      .populate('groupId', 'name academicYear stages')
+      .populate('proposalId', 'title status abstract objectives methodology expectedOutcomes attachments feedbackList');
     if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
 
     if (req.user.role === 'student' && project.studentId.toString() !== req.user._id.toString()) {
@@ -39,7 +40,27 @@ export const getProjectStages = async (req, res) => {
       .populate('proposalId', 'title status abstract objectives methodology expectedOutcomes attachments feedbackList')
       .sort({ stageOrder: 1 });
 
-    res.json({ success: true, data: stages, project: { title: project.title, status: project.status, group: project.groupId } });
+    // Build response, ensuring stage 1 always carries the linked proposal data.
+    // If proposalId is missing on the stage record (legacy data or race condition),
+    // inject it from the project and lazily persist the link.
+    const stagesData = stages.map((s) => {
+      const plain = s.toObject({ virtuals: false });
+      if (s.stageOrder === 1 && !plain.proposalId && project.proposalId) {
+        plain.proposalId = project.proposalId; // already populated above
+        // Persist so subsequent reads don't need this fallback
+        ProjectStageProgress.findByIdAndUpdate(s._id, {
+          proposalId: project.proposalId._id,
+          stageName:  'Proposal Submission',
+        }).catch(() => {});
+      }
+      return plain;
+    });
+
+    res.json({
+      success: true,
+      data:    stagesData,
+      project: { title: project.title, status: project.status, group: project.groupId },
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

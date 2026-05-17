@@ -178,13 +178,13 @@ export const submitProposal = async (req, res) => {
       proposalId: saved._id,
     });
 
-    // If a group was already assigned, sync stage 1 to 'submitted'
+    // If a group was already assigned, sync stage 1 to 'submitted' and (re-)link the proposal
     const stage1 = await ProjectStageProgress.findOne({ projectId, stageOrder: 1 });
-    if (stage1 && stage1.status === 'active') {
-      stage1.proposalId   = saved._id;
-      stage1.stageName    = 'Proposal Submission';
-      stage1.status       = 'submitted';
-      stage1.submittedAt  = new Date();
+    if (stage1 && stage1.status !== 'completed') {
+      stage1.proposalId    = saved._id;
+      stage1.stageName     = 'Proposal Submission';
+      stage1.status        = 'submitted';
+      stage1.submittedAt   = new Date();
       stage1.advisorReview = { status: 'pending' };
       stage1.adminReview   = { status: 'pending' };
       await stage1.save();
