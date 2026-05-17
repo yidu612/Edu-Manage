@@ -2,48 +2,91 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { 
-  Card, 
-  CardContent, 
-  CardDescription, 
-  CardFooter, 
-  CardHeader, 
-  CardTitle 
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle
 } from "@/components/ui/card";
 import { GraduationCap, Lock, CheckCircle2, Loader2, ArrowLeft } from "lucide-react";
 import { useToast } from "@/app/(src)/hooks/use-toast";
 
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+
 export default function ResetPasswordPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token");
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({ password: "", confirm: "" });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    if (!token) {
+      return toast({
+        variant: "destructive",
+        title: "Invalid link",
+        description: "No reset token found. Please request a new reset link.",
+      });
+    }
+
     if (formData.password !== formData.confirm) {
-      return toast({ 
-        variant: "destructive", 
-        title: "Passwords mismatch",
-        description: "The two passwords you entered do not match."
+      return toast({
+        variant: "destructive",
+        title: "Passwords do not match",
+        description: "The two passwords you entered do not match.",
+      });
+    }
+
+    if (formData.password.length < 6) {
+      return toast({
+        variant: "destructive",
+        title: "Password too short",
+        description: "Password must be at least 6 characters.",
       });
     }
 
     setIsLoading(true);
 
-    // Simulate password update
-    setTimeout(() => {
-      toast({ 
-        title: "Success!", 
-        description: "Your password has been updated. Please sign in." 
+    try {
+      const res = await fetch(`${API}/auth/reset-password/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: formData.password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        return toast({
+          variant: "destructive",
+          title: "Reset failed",
+          description: data.message || "The reset link is invalid or has expired.",
+        });
+      }
+
+      toast({
+        title: "Password updated",
+        description: "You can now log in with your new password.",
       });
       router.push("/login");
-    }, 1500);
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Request failed",
+        description: "Could not reach the server. Please try again.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
