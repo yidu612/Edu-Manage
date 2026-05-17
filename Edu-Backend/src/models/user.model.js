@@ -41,6 +41,15 @@ const userSchema = new mongoose.Schema(
         type: String,
       },
     ],
+    approvalStatus: {
+      type: String,
+      enum: ['approved', 'pending', 'rejected'],
+      default: function () {
+        return this.role === 'teacher' ? 'pending' : 'approved';
+      },
+    },
+    resetPasswordToken:   { type: String },
+    resetPasswordExpires: { type: Date },
   },
   { timestamps: true }
 );

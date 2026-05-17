@@ -86,6 +86,15 @@ export const signUp = async (req, res) => {
     const newUser = new User(userData);
     await newUser.save();
 
+    // Teachers require admin approval before they can log in
+    if (role === ROLES.TEACHER) {
+      return res.status(201).json({
+        success: true,
+        pending: true,
+        message: "Registration submitted — your account is pending admin approval. You will be able to log in once approved.",
+      });
+    }
+
     const token = generateToken(newUser, res);
 
     // Respond with success and user data (including imageUrl)
@@ -142,6 +151,20 @@ export const login = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Invalid credentials",
+      });
+    }
+
+    // Block accounts that have not been approved yet (teachers) or were rejected
+    if (user.approvalStatus === 'pending') {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is pending admin approval. Please check back later.",
+      });
+    }
+    if (user.approvalStatus === 'rejected') {
+      return res.status(403).json({
+        success: false,
+        message: "Your account registration was rejected. Please contact the administrator.",
       });
     }
 

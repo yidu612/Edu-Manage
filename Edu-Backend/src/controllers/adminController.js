@@ -4,6 +4,63 @@ import { notify } from '../utils/notify.js';
 import mongoose from 'mongoose';
 import { ROLES } from '../config/roles.js';
 
+export const getPendingTeachers = async (req, res) => {
+  try {
+    const teachers = await User.find({ role: ROLES.TEACHER, approvalStatus: 'pending' })
+      .select('fullName email department createdAt')
+      .sort({ createdAt: -1 });
+    res.json({ success: true, data: teachers });
+  } catch (err) {
+    console.error('getPendingTeachers error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const approveTeacher = async (req, res) => {
+  try {
+    const user = await User.findOneAndUpdate(
+      { _id: req.params.id, role: ROLES.TEACHER, approvalStatus: 'pending' },
+      { approvalStatus: 'approved' },
+      { new: true }
+    ).select('fullName email department approvalStatus');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Pending teacher not found' });
+    }
+
+    await notify({
+      recipientId:      user._id,
+      notificationType: 'system',
+      message:          'Your teacher account has been approved. You can now log in.',
+      priority:         'high',
+    });
+
+    res.json({ success: true, message: 'Teacher approved', data: user });
+  } catch (err) {
+    console.error('approveTeacher error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const rejectTeacher = async (req, res) => {
+  try {
+    const user = await User.findOneAndUpdate(
+      { _id: req.params.id, role: ROLES.TEACHER, approvalStatus: 'pending' },
+      { approvalStatus: 'rejected' },
+      { new: true }
+    ).select('fullName email approvalStatus');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Pending teacher not found' });
+    }
+
+    res.json({ success: true, message: 'Teacher registration rejected', data: user });
+  } catch (err) {
+    console.error('rejectTeacher error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 export const assignMentor = async (req, res) => {
   try {
     const { projectId, mentorId } = req.body;
