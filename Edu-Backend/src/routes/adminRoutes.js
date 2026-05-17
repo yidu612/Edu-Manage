@@ -17,6 +17,7 @@ import {
   getProjectGroup,
   updateProjectGroup,
 } from '../controllers/projectGroupController.js';
+import { getProjects, assignProjectGroup } from '../controllers/projectController.js';
 import { protectRoute } from '../middleware/auth.middleware.js';
 import checkRole from '../middleware/roleCheck.js';
 import { ROLES } from '../config/roles.js';
@@ -38,6 +39,10 @@ router.patch('/defense-sessions/:id/finalize',      finalizeDefenseSession);
 
 router.patch('/projects/:id/publish',               publishProject);
 router.patch('/projects/:id/unpublish',             unpublishProject);
+
+// All projects (admin view)
+router.get('/projects',                             getProjects);
+router.patch('/projects/:id/assign-group',          assignProjectGroup);
 
 // Project Groups (Collections)
 router.post('/groups',                              createProjectGroup);

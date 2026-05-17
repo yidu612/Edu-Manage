@@ -59,6 +59,7 @@ const navigationItems = {
   admin: [
     { name: 'Dashboard',      href: '/admin/dashboard',       icon: LayoutDashboard },
     { name: 'Proposals',      href: '/admin/proposals',       icon: FileText },
+    { name: 'Projects',       href: '/admin/projects',        icon: FolderGit2 },
     { name: 'Project Groups', href: '/admin/groups',          icon: Layers },
     { name: 'Stage Reviews',  href: '/admin/stage-reviews',   icon: ClipboardCheck },
     { name: 'Assign Advisors',href: '/admin/assignments',     icon: UserCog },

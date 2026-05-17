@@ -1,4 +1,6 @@
 import Project from '../models/Project.js';
+import ProjectGroup from '../models/ProjectGroup.js';
+import ProjectStageProgress from '../models/ProjectStageProgress.js';
 import Milestone from '../models/Milestone.js';
 import { notify } from '../utils/notify.js';
 import mongoose from 'mongoose';
@@ -16,6 +18,7 @@ export const getProjects = async (req, res) => {
       .populate('mentorId',   'fullName email')
       .populate('repositoryId', 'visibility')
       .populate('proposalId', 'title status')
+      .populate('groupId', 'name academicYear stages isLocked')
       .sort({ createdAt: -1 });
 
     res.json({ success: true, count: projects.length, data: projects });
@@ -143,6 +146,74 @@ export const createMilestone = async (req, res) => {
     });
 
     res.status(201).json({ success: true, data: milestone });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+// ─── PATCH /admin/projects/:id/assign-group (admin only) ─────────────────────
+
+export const assignProjectGroup = async (req, res) => {
+  try {
+    const { groupId } = req.body;
+    if (!groupId) return res.status(400).json({ success: false, message: 'groupId is required' });
+
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
+
+    const group = await ProjectGroup.findById(groupId);
+    if (!group) return res.status(404).json({ success: false, message: 'Project group not found' });
+    if (!group.stages || group.stages.length < 2) {
+      return res.status(400).json({ success: false, message: 'Project group must have at least 2 stages' });
+    }
+
+    // If a different group was already assigned, clean up old stage records
+    if (project.groupId && project.groupId.toString() !== groupId) {
+      const oldGroup = await ProjectGroup.findById(project.groupId);
+      if (oldGroup) {
+        await ProjectGroup.findByIdAndUpdate(project.groupId, { $inc: { projectCount: -1 } });
+        // Re-evaluate isLocked for old group
+        const remaining = await Project.countDocuments({ groupId: project.groupId, _id: { $ne: project._id } });
+        if (remaining === 0) await ProjectGroup.findByIdAndUpdate(project.groupId, { isLocked: false });
+      }
+      await ProjectStageProgress.deleteMany({ projectId: project._id });
+    }
+
+    // Only create stages if none exist yet for this group assignment
+    const existingStages = await ProjectStageProgress.countDocuments({ projectId: project._id, groupId });
+    if (existingStages === 0) {
+      const sortedStages = [...group.stages].sort((a, b) => a.order - b.order);
+      const stageDocs = sortedStages.map((s, index) => ({
+        projectId:  project._id,
+        groupId:    group._id,
+        stageOrder: s.order,
+        stageName:  s.name,
+        deadline:   s.deadline,
+        status:     index === 0 ? 'active' : 'locked',
+      }));
+      await ProjectStageProgress.insertMany(stageDocs);
+      await ProjectGroup.findByIdAndUpdate(groupId, { isLocked: true, $inc: { projectCount: 1 } });
+    }
+
+    const newStatus = ['draft', 'pending', 'submitted'].includes(project.status) ? 'active' : project.status;
+    project.groupId = group._id;
+    project.status  = newStatus;
+    await project.save();
+
+    await notify({
+      recipientId:      project.studentId,
+      notificationType: 'system',
+      message:          `Your project was assigned to group "${group.name}". Stage tracking is now active.`,
+      priority:         'medium',
+    });
+
+    const populated = await Project.findById(project._id)
+      .populate('studentId', 'fullName email department')
+      .populate('mentorId',  'fullName email')
+      .populate('proposalId', 'title status')
+      .populate('groupId', 'name academicYear stages isLocked');
+
+    res.json({ success: true, data: populated });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }
