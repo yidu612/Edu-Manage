@@ -1,5 +1,7 @@
 import Project from '../models/Project.js';
 import User from '../models/user.model.js';
+import Repository from '../models/Repository.js';
+import DefenseSession from '../models/DefenseSession.js';
 import { notify } from '../utils/notify.js';
 import mongoose from 'mongoose';
 import { ROLES } from '../config/roles.js';
@@ -60,6 +62,141 @@ export const rejectTeacher = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+// ─── Defense Sessions ─────────────────────────────────────────────────────────
+
+export const createDefenseSession = async (req, res) => {
+  try {
+    const { projectId, scheduledAt, location, examiners } = req.body;
+    if (!projectId || !scheduledAt) {
+      return res.status(400).json({ success: false, message: 'projectId and scheduledAt are required' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(projectId)) {
+      return res.status(400).json({ success: false, message: 'Invalid projectId' });
+    }
+
+    const project = await Project.findById(projectId);
+    if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
+
+    const examinerIds = (examiners ?? []).filter((id) => mongoose.Types.ObjectId.isValid(id));
+
+    const session = await DefenseSession.create({
+      projectId,
+      scheduledAt: new Date(scheduledAt),
+      location,
+      examiners: examinerIds,
+    });
+
+    const populated = await DefenseSession.findById(session._id)
+      .populate('projectId', 'title abstract studentId')
+      .populate('examiners', 'fullName email');
+
+    // Notify assigned examiners
+    for (const examId of examinerIds) {
+      await notify({
+        recipientId:      examId,
+        notificationType: 'system',
+        message:          `You have been assigned to examine "${project.title}" on ${new Date(scheduledAt).toLocaleDateString()}.`,
+        priority:         'high',
+      });
+    }
+
+    res.status(201).json({ success: true, data: populated });
+  } catch (err) {
+    console.error('createDefenseSession error:', err.message);
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+export const getAllDefenseSessions = async (req, res) => {
+  try {
+    const sessions = await DefenseSession.find()
+      .populate('projectId', 'title abstract studentId')
+      .populate('examiners', 'fullName email')
+      .sort({ scheduledAt: -1 });
+    res.json({ success: true, data: sessions });
+  } catch (err) {
+    console.error('getAllDefenseSessions error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const finalizeDefenseSession = async (req, res) => {
+  try {
+    const session = await DefenseSession.findById(req.params.id);
+    if (!session) return res.status(404).json({ success: false, message: 'Session not found' });
+    if (session.status === 'completed') {
+      return res.status(400).json({ success: false, message: 'Session already finalized' });
+    }
+    if (session.scores.length === 0) {
+      return res.status(400).json({ success: false, message: 'No scores submitted yet' });
+    }
+
+    const avg = session.scores.reduce((sum, s) => sum + s.score, 0) / session.scores.length;
+    session.finalScore = Math.round(avg * 10) / 10;
+    session.status = 'completed';
+    await session.save();
+
+    const populated = await DefenseSession.findById(session._id)
+      .populate('projectId', 'title abstract studentId')
+      .populate('examiners', 'fullName email');
+
+    res.json({ success: true, data: populated });
+  } catch (err) {
+    console.error('finalizeDefenseSession error:', err.message);
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+// ─── Publish / Visibility ─────────────────────────────────────────────────────
+
+export const publishProject = async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
+    if (project.status !== 'approved') {
+      return res.status(400).json({ success: false, message: 'Only approved projects can be published' });
+    }
+
+    let repo = await Repository.findOne({ projectId: project._id });
+    if (!repo) {
+      repo = await Repository.create({ projectId: project._id, visibility: 'public' });
+    } else {
+      repo.visibility = 'public';
+      await repo.save();
+    }
+
+    if (!project.repositoryId) {
+      project.repositoryId = repo._id;
+      await project.save();
+    }
+
+    res.json({ success: true, message: 'Project published', data: repo });
+  } catch (err) {
+    console.error('publishProject error:', err.message);
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+export const unpublishProject = async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
+
+    const repo = await Repository.findOne({ projectId: project._id });
+    if (!repo) return res.status(404).json({ success: false, message: 'Repository not found' });
+
+    repo.visibility = 'private';
+    await repo.save();
+
+    res.json({ success: true, message: 'Project unpublished', data: repo });
+  } catch (err) {
+    console.error('unpublishProject error:', err.message);
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+// ─── Mentor Assignment ────────────────────────────────────────────────────────
 
 export const assignMentor = async (req, res) => {
   try {

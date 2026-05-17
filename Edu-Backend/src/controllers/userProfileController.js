@@ -277,6 +277,16 @@ export const getTeachers = async (req, res) => {
     }
 };
 
+// GET /api/users/examiners
+export const getExaminers = async (req, res) => {
+    try {
+        const examiners = await User.find({ role: 'examiner' }).select('-password');
+        res.status(200).json({ success: true, count: examiners.length, data: examiners });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // GET /api/users/peers — other students (excluding self)
 export const getPeers = async (req, res) => {
     try {

@@ -18,6 +18,7 @@ import {
   CheckCircle,
   Bell,
   LogOut,
+  CalendarCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -54,6 +55,7 @@ const navigationItems = {
     { name: 'Dashboard',      href: '/admin/dashboard',    icon: LayoutDashboard },
     { name: 'Assign Advisors',href: '/admin/assignments',  icon: UserCog },
     { name: 'Teams Overview', href: '/admin/teams',        icon: Users },
+    { name: 'Defense Sessions',href: '/admin/defense',     icon: CalendarCheck },
     { name: 'Advisors',       href: '/admin/advisors',     icon: GraduationCap },
     { name: 'Departments',    href: '/admin/departments',  icon: Building2 },
     { name: 'Notifications',  href: '/notifications',      icon: Bell },
